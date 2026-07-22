@@ -24,6 +24,17 @@ import {
 
 interface TagOption { id: string; name: string; count: number }
 
+function apiMessage(body: unknown, fallback: string) {
+  if (typeof body !== "object" || body === null || !("error" in body)) return fallback;
+  const error = (body as { error?: unknown }).error;
+  if (typeof error !== "object" || error === null || !("message" in error)) return fallback;
+  const { code, message, requestId } = error as { code?: unknown; message?: unknown; requestId?: unknown };
+  if (typeof message !== "string") return fallback;
+  return code === "INTERNAL_ERROR" && typeof requestId === "string"
+    ? `${message}（错误编号：${requestId}）`
+    : message;
+}
+
 export function PromptEditor({ initial, seed }: { initial?: NoteView; seed?: NoteView }) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -137,7 +148,7 @@ export function PromptEditor({ initial, seed }: { initial?: NoteView; seed?: Not
         body: JSON.stringify({ prompt: originalPrompt }),
         signal: controller.signal,
       });
-      const body = await response.json();
+      const body = await response.json().catch(() => null);
       if (sequence !== optimizationSequenceRef.current) return;
       if (response.status === 401) {
         setOptimization(null);
@@ -145,8 +156,7 @@ export function PromptEditor({ initial, seed }: { initial?: NoteView; seed?: Not
         return;
       }
       if (!response.ok) {
-        const apiMessage = typeof body?.error?.message === "string" ? body.error.message : "AI 优化失败，请稍后重试。";
-        setOptimization({ status: "error", originalPrompt, message: apiMessage });
+        setOptimization({ status: "error", originalPrompt, message: apiMessage(body, `AI 优化失败（HTTP ${response.status}），请稍后重试。`) });
         return;
       }
       setOptimization({

@@ -16,6 +16,9 @@ if (manifest.manifest_version !== 3) failures.push("extension must use Manifest 
 if (manifest.host_permissions?.some((permission) => permission === "<all_urls>" || permission.includes("*://*"))) failures.push("extension has an unconditional broad host permission");
 if (!manifest.optional_host_permissions?.includes("https://*/*")) failures.push("extension custom-server permission is missing");
 if ((productionCompose.match(/REDIS_URL:/g) ?? []).length < 3) failures.push("production web, migrate, and generation worker must all receive REDIS_URL");
+for (const name of ["AI_CONNECTION_TIMEOUT_MS", "AI_TEXT_TIMEOUT_MS", "AI_REVERSE_PROMPT_TIMEOUT_MS", "AI_IMAGE_TIMEOUT_MS"]) {
+  if (!productionCompose.includes(`${name}:`)) failures.push(`production compose must expose ${name}`);
+}
 
 const production = process.argv.includes("--production");
 if (production) {

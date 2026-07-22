@@ -246,6 +246,24 @@ describe("durable generation jobs", () => {
     expect(media.uploads.filter((upload) => upload.role === "result")).toHaveLength(0);
   });
 
+  it("deletes terminal history and cascades its database assets", async () => {
+    const owner = await sessionFor("generation-delete-history");
+    await configureImageModel(owner.cookie);
+    const queue = new RecordingQueue();
+    const service = new GenerationService({ queue, media: new RecordingMediaStore() });
+    const created = await service.create(owner.userId, { ...input(), referenceImages: [png] });
+    await expect(service.removeHistory(owner.userId, created.id))
+      .rejects.toMatchObject({ code: "GENERATION_STILL_ACTIVE", status: 409 });
+    await db.update(aiGenerationJobs).set({ status: "failed", finishedAt: new Date() })
+      .where(and(eq(aiGenerationJobs.id, created.id), eq(aiGenerationJobs.userId, owner.userId)));
+
+    await expect(service.removeHistory(owner.userId, created.id))
+      .resolves.toEqual({ id: created.id, deleted: true });
+    expect(queue.removed).toContain(created.id);
+    expect(await db.select().from(aiGenerationJobs).where(eq(aiGenerationJobs.id, created.id))).toHaveLength(0);
+    expect(await db.select().from(aiGenerationAssets).where(eq(aiGenerationAssets.jobId, created.id))).toHaveLength(0);
+  });
+
   it("recovers stale running jobs and re-enqueues them", async () => {
     const owner = await sessionFor("generation-recovery");
     await configureImageModel(owner.cookie);

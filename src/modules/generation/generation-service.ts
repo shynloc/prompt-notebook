@@ -161,6 +161,19 @@ export class GenerationService {
     return this.get(userId, id);
   }
 
+  async removeHistory(userId: string, id: string) {
+    const current = await this.get(userId, id);
+    if (!["cancelled", "succeeded", "failed"].includes(current.status)) {
+      throw new ApiError(409, "GENERATION_STILL_ACTIVE", "请先取消仍在运行的生成任务，再删除历史记录");
+    }
+    await this.queue.remove(id).catch(() => undefined);
+    const [deleted] = await db.delete(aiGenerationJobs)
+      .where(and(eq(aiGenerationJobs.id, id), eq(aiGenerationJobs.userId, userId)))
+      .returning({ id: aiGenerationJobs.id });
+    if (!deleted) throw new ApiError(404, "GENERATION_NOT_FOUND", "Generation job was not found");
+    return { id: deleted.id, deleted: true };
+  }
+
   async recoverStale(staleBefore: Date) {
     const now = new Date();
     await db.update(aiGenerationJobs).set({

@@ -27,7 +27,7 @@ const worker = new Worker<{ jobId: string }>(
 );
 
 worker.on("error", (error) => console.error("Generation worker error", error.name));
-worker.on("failed", (job, error) => console.error("Generation job failed", job?.id, error.name));
+worker.on("failed", (job, error) => console.error("Generation job failed", job?.id, error.name, error.message));
 
 let maintaining = false;
 async function maintain() {

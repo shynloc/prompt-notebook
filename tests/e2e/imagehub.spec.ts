@@ -55,7 +55,12 @@ test("restores, polls, reverses, and saves an ImageHub generation on mobile", as
     if (route.request().method() === "POST") await route.fulfill({ status: 201, json: { data: queued } });
     else await route.fallback();
   });
-  await page.route(`**/api/v1/generations/${jobId}`, (route) => route.fulfill({ json: { data: succeeded } }));
+  await page.route(`**/api/v1/generations/${jobId}*`, (route) => {
+    if (route.request().method() === "DELETE" && route.request().url().includes("mode=history")) {
+      return route.fulfill({ json: { data: { id: jobId, deleted: true } } });
+    }
+    return route.fulfill({ json: { data: succeeded } });
+  });
   await page.route("**/api/v1/ai/reverse-prompt", (route) => route.fulfill({ json: { data: { prompt: "A reconstructed prompt", model: { name: "Vision" } } } }));
   await page.route("**/api/v1/notes", async (route) => {
     if (route.request().method() === "POST") await route.fulfill({ status: 201, json: { data: { id: "note-1" } } });
@@ -92,6 +97,10 @@ test("restores, polls, reverses, and saves an ImageHub generation on mobile", as
   await expect(page.getByText("生成图已设为原笔记封面。")).toBeVisible();
   await page.getByRole("button", { name: "保存为笔记" }).click();
   await expect(page.getByText("已保存为新的提示词笔记。")).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "删除记录" }).click();
+  await expect(page.getByText("生成历史已删除。")).toBeVisible();
+  await expect(page.getByText("生成完成")).not.toBeVisible();
   const dimensions = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
   expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.width);
 });

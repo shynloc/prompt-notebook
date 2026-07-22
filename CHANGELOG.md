@@ -4,6 +4,20 @@ All notable changes use the Keep a Changelog structure. Versions follow Semantic
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-07-22
+
+### Added
+
+- Added permanent deletion for completed, cancelled and failed ImageHub history records.
+- Added deployment-level timeout controls for connection tests, prompt optimization, reverse prompting and image generation.
+
+### Fixed
+
+- Increased the default prompt-optimization timeout to 60 seconds and image-generation timeout to 10 minutes for slower compatible providers.
+- Prevented automatic image retries after a client-side timeout, avoiding duplicate provider jobs and possible duplicate charges.
+- Preserved sanitized upstream error details and request IDs so authentication, parameter and provider failures are actionable without exposing API keys.
+- Made the prompt editor display the server's actionable AI error instead of replacing it with a generic network message.
+
 ## [1.1.0] - 2026-07-22
 
 ### Added

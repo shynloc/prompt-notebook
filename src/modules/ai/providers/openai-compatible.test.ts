@@ -201,6 +201,56 @@ describe("OpenAI-compatible provider adapter", () => {
     })).rejects.not.toThrow("secret-not-for-errors");
   });
 
+  it("does not automatically retry an image request after the client wait timeout", async () => {
+    const adapter = new OpenAiCompatibleAdapter({
+      imageTimeoutMs: 1,
+      fetcher: vi.fn(async (_input, init) => new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+      })) as typeof fetch,
+      resolver,
+    });
+    await expect(adapter.generateImages({
+      baseUrl: "https://api.example.com/v1",
+      apiKey: "key",
+      modelId: "gpt-image-2",
+      prompt: "A lighthouse",
+      width: 1024,
+      height: 1024,
+      quality: "high",
+      imageCount: 1,
+      parameters: {},
+      referenceImages: [],
+    })).rejects.toMatchObject({ code: "AI_PROVIDER_TIMEOUT", retryable: false });
+  });
+
+  it("surfaces sanitized structured provider errors and request IDs", async () => {
+    const adapter = new OpenAiCompatibleAdapter({
+      fetcher: vi.fn(async () => Response.json({
+        error: { code: "invalid_value", message: "Unsupported size for opaque-private-provider-key" },
+      }, { status: 400, headers: { "x-request-id": "provider-request-123" } })) as typeof fetch,
+      resolver,
+    });
+    const promise = adapter.generateImages({
+      baseUrl: "https://api.example.com/v1",
+      apiKey: "opaque-private-provider-key",
+      modelId: "gpt-image-2",
+      prompt: "A lighthouse",
+      width: 1024,
+      height: 1024,
+      quality: "high",
+      imageCount: 1,
+      parameters: {},
+      referenceImages: [],
+    });
+    await expect(promise).rejects.toMatchObject({
+      code: "AI_PROVIDER_UNAVAILABLE",
+      retryable: false,
+      message: expect.stringContaining("invalid_value"),
+    });
+    await expect(promise).rejects.toThrow("provider-request-123");
+    await expect(promise).rejects.not.toThrow("opaque-private-provider-key");
+  });
+
   it("tests a connection without exposing the key", async () => {
     const fetcher = vi.fn(async () => Response.json({ data: [{ id: "model-a" }, { id: "model-b" }] }));
     const adapter = new OpenAiCompatibleAdapter({ fetcher: fetcher as typeof fetch, resolver });

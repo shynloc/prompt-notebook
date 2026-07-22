@@ -7,6 +7,7 @@ import { GenerationService } from "@/modules/generation/generation-service";
 interface GenerationDetailService {
   get(userId: string, id: string): Promise<unknown>;
   cancel(userId: string, id: string): Promise<unknown>;
+  removeHistory(userId: string, id: string): Promise<unknown>;
 }
 
 let defaultService: GenerationService | undefined;
@@ -15,7 +16,7 @@ function generationService(service?: GenerationDetailService) {
 }
 
 export function createGenerationDetailHandlers(service?: GenerationDetailService) {
-  async function withJob(request: Request, context: { params: Promise<{ id: string }> }, action: "get" | "cancel") {
+  async function withJob(request: Request, context: { params: Promise<{ id: string }> }, action: "get" | "cancel" | "removeHistory") {
     try {
       const session = await requireSession(request);
       const id = z.uuid().parse((await context.params).id);
@@ -26,7 +27,10 @@ export function createGenerationDetailHandlers(service?: GenerationDetailService
   }
   return {
     GET: (request: Request, context: { params: Promise<{ id: string }> }) => withJob(request, context, "get"),
-    DELETE: (request: Request, context: { params: Promise<{ id: string }> }) => withJob(request, context, "cancel"),
+    DELETE: (request: Request, context: { params: Promise<{ id: string }> }) => {
+      const action = new URL(request.url).searchParams.get("mode") === "history" ? "removeHistory" : "cancel";
+      return withJob(request, context, action);
+    },
   };
 }
 

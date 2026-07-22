@@ -194,10 +194,22 @@ export function ImageHubWorkbench() {
   }
 
   async function cancel(jobId: string) {
-    const response = await fetch(`/api/v1/generations/${jobId}`, { method: "DELETE" });
+    const response = await fetch(`/api/v1/generations/${jobId}?mode=cancel`, { method: "DELETE" });
     const body = await response.json();
     if (response.ok) setJobs((current) => current.map((job) => job.id === jobId ? body.data : job));
     else setMessage(apiMessage(body, "取消任务失败。"));
+  }
+
+  async function removeHistory(job: GenerationJob) {
+    if (!window.confirm("确认删除这条生成历史？此操作不会删除已经保存到提示词笔记中的图片。")) return;
+    const response = await fetch(`/api/v1/generations/${job.id}?mode=history`, { method: "DELETE" });
+    const body = await response.json().catch(() => null);
+    if (response.ok) {
+      setJobs((current) => current.filter((candidate) => candidate.id !== job.id));
+      setMessage("生成历史已删除。");
+    } else {
+      setMessage(apiMessage(body, "删除生成历史失败。"));
+    }
   }
 
   async function reverseFrom(source: File | GenerationAsset) {
@@ -350,7 +362,7 @@ export function ImageHubWorkbench() {
                 <figcaption><button type="button" onClick={() => void reverseFrom(asset)}>反推</button><a download href={asset.displayUrl} target="_blank" rel="noopener noreferrer">下载</a>{sourceNoteId ? <button type="button" onClick={() => void attachAsCover(job, asset)}>设为封面</button> : null}</figcaption>
               </figure>)}</div> : <div className="imagehub-placeholder"><span>{job.status === "failed" ? "!" : "◌"}</span><p>{job.errorMessage || "任务正在等待图像结果"}</p></div>}
               <p className="imagehub-job__prompt">{job.prompt}</p>
-              <footer>{activeStatuses.includes(job.status) ? <button type="button" onClick={() => void cancel(job.id)}>取消任务</button> : null}{job.status === "succeeded" ? <button type="button" onClick={() => void saveAsNote(job)}>保存为笔记</button> : null}<button type="button" onClick={() => navigator.clipboard.writeText(job.prompt)}>复制 Prompt</button></footer>
+              <footer>{activeStatuses.includes(job.status) ? <button type="button" onClick={() => void cancel(job.id)}>取消任务</button> : null}{job.status === "succeeded" ? <button type="button" onClick={() => void saveAsNote(job)}>保存为笔记</button> : null}<button type="button" onClick={() => navigator.clipboard.writeText(job.prompt)}>复制 Prompt</button>{!activeStatuses.includes(job.status) ? <button type="button" onClick={() => void removeHistory(job)}>删除记录</button> : null}</footer>
             </article>;
           })}</div> : <div className="imagehub-empty"><span>NO EXPOSURES YET</span><h3>还没有生成记录</h3><p>从左侧输入第一条提示词，任务会在这里持续更新。</p></div>}
         </section>

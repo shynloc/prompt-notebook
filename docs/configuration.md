@@ -11,10 +11,16 @@
 | `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | production email | Mail credentials and sender |
 | `APP_IMAGE`, `IMAGE_TAG` | deployment | Container repository and immutable revision tag |
 | `APP_PORT` | optional | Loopback port for the reverse proxy; default `5488` |
+| `AI_CONNECTION_TIMEOUT_MS` | optional | AI connection-test timeout; default `10000` (10 seconds) |
+| `AI_TEXT_TIMEOUT_MS` | optional | Prompt-optimization timeout; default `60000` (60 seconds) |
+| `AI_REVERSE_PROMPT_TIMEOUT_MS` | optional | Image reverse-prompt timeout; default `120000` (2 minutes) |
+| `AI_IMAGE_TIMEOUT_MS` | optional | Image-generation provider timeout; default `600000` (10 minutes) |
 
 Image-host endpoints, image-host tokens, AI Base URLs, model IDs and model API keys are user-owned database settings. They must not be fixed in source code, Docker images, the Chrome extension, or shared server environment variables.
 
 Never prefix a secret with `NEXT_PUBLIC_` or commit an environment file.
+
+The generation worker does not automatically retry an image request that reaches `AI_IMAGE_TIMEOUT_MS`, because the upstream provider may still be generating after the local connection closes. Rate limits and temporary upstream 5xx errors remain eligible for bounded queue retries. Increase the timeout for a known slow provider instead of repeatedly submitting the same generation.
 
 ## Credential encryption and rotation
 

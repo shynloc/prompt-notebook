@@ -89,4 +89,23 @@ describe("AI ImageHub workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "使用这个 Prompt" }));
     await waitFor(() => expect(editor).toHaveValue("A reconstructed cinematic prompt"));
   });
+
+  it("deletes a failed history card after confirmation", async () => {
+    const failed = { ...job("failed"), errorMessage: "Provider rejected the request" };
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/api/v1/generations?") && !init?.method) return Response.json({ data: [failed] });
+      if (url.includes(`${resultAsset.jobId}?mode=history`) && init?.method === "DELETE") {
+        return Response.json({ data: { id: resultAsset.jobId, deleted: true } });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<ImageHubWorkbench />);
+    await screen.findByText("Provider rejected the request");
+    fireEvent.click(screen.getByRole("button", { name: "删除记录" }));
+    await screen.findByText("生成历史已删除。");
+    expect(screen.queryByText("Provider rejected the request")).not.toBeInTheDocument();
+    expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("mode=history"), { method: "DELETE" });
+  });
 });

@@ -107,12 +107,13 @@ describe("generation API", () => {
     }));
   });
 
-  it("gets and cancels only validated job IDs", async () => {
+  it("gets, cancels, and deletes history only for validated job IDs", async () => {
     const owner = await sessionFor();
     const id = randomUUID();
     const get = vi.fn(async () => ({ id, status: "queued" }));
     const cancel = vi.fn(async () => ({ id, status: "cancelled" }));
-    const handlers = createGenerationDetailHandlers({ get, cancel });
+    const removeHistory = vi.fn(async () => ({ id, deleted: true }));
+    const handlers = createGenerationDetailHandlers({ get, cancel, removeHistory });
     expect((await handlers.GET(request(`${base}/api/v1/generations/not-a-uuid`, { cookie: owner.cookie }), {
       params: Promise.resolve({ id: "not-a-uuid" }),
     })).status).toBe(422);
@@ -121,6 +122,11 @@ describe("generation API", () => {
     });
     expect(response.status).toBe(200);
     expect(cancel).toHaveBeenCalledWith(owner.userId, id);
+    const deleted = await handlers.DELETE(request(`${base}/api/v1/generations/${id}?mode=history`, { cookie: owner.cookie, method: "DELETE" }), {
+      params: Promise.resolve({ id }),
+    });
+    expect(deleted.status).toBe(200);
+    expect(removeHistory).toHaveBeenCalledWith(owner.userId, id);
   });
 
   it("validates an uploaded image before calling reverse prompting", async () => {

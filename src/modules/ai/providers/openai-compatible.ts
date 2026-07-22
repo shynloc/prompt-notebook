@@ -19,9 +19,13 @@ import {
   type ImageGenerationQuality,
 } from "../types";
 
-const DEFAULT_TIMEOUT_MS = 8_000;
+const DEFAULT_TEXT_TIMEOUT_MS = 60_000;
+const DEFAULT_REVERSE_PROMPT_TIMEOUT_MS = 120_000;
+const DEFAULT_IMAGE_TIMEOUT_MS = 600_000;
+const DEFAULT_CONNECTION_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BYTES = 256_000;
 const MAX_IMAGE_RESPONSE_BYTES = MAX_IMAGE_BYTES * 6;
+const MAX_ERROR_RESPONSE_BYTES = 32_000;
 
 type Fetcher = typeof fetch;
 
@@ -29,6 +33,14 @@ interface OpenAiCompatibleOptions {
   fetcher?: Fetcher;
   resolver?: AddressResolver;
   timeoutMs?: number;
+  imageTimeoutMs?: number;
+  reversePromptTimeoutMs?: number;
+  connectionTimeoutMs?: number;
+}
+
+function configuredTimeout(name: string, fallback: number, minimum: number, maximum: number) {
+  const value = Number(process.env[name] ?? fallback);
+  return Number.isFinite(value) && value >= minimum && value <= maximum ? Math.trunc(value) : fallback;
 }
 
 function endpoint(baseUrl: URL, path: string) {
@@ -64,21 +76,57 @@ async function readLimitedText(response: Response, limit = MAX_RESPONSE_BYTES) {
   return typeof bytes === "string" ? bytes : new TextDecoder().decode(bytes);
 }
 
-function statusError(status: number) {
+function sanitizedProviderDetail(value: unknown, secrets: string[] = []) {
+  if (typeof value !== "string") return "";
+  let detail = value;
+  for (const secret of secrets) {
+    if (secret.length >= 4) detail = detail.split(secret).join("[redacted]");
+  }
+  return detail
+    .replace(/\bBearer\s+[^\s]+/gi, "Bearer [redacted]")
+    .replace(/\bsk-[a-zA-Z0-9._-]+/g, "sk-[redacted]")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, 300);
+}
+
+async function statusError(response: Response, secrets: string[] = []) {
+  const status = response.status;
+  let code: AiProviderError["code"] = "AI_PROVIDER_UNAVAILABLE";
+  let message = `AI 服务拒绝了请求（HTTP ${status}）`;
+  let retryable = status >= 500;
   if (status === 401 || status === 403) {
-    return new AiProviderError("AI_PROVIDER_AUTH_FAILED", "AI provider rejected the API key", false);
+    code = "AI_PROVIDER_AUTH_FAILED";
+    message = "AI 服务拒绝了 API Key";
+    retryable = false;
+  } else if (status === 402) {
+    code = "AI_PROVIDER_QUOTA_EXCEEDED";
+    message = "AI 服务余额或配额不足";
+    retryable = false;
+  } else if (status === 429) {
+    code = "AI_PROVIDER_RATE_LIMITED";
+    message = "AI 服务请求过于频繁";
+    retryable = true;
   }
-  if (status === 402) {
-    return new AiProviderError("AI_PROVIDER_QUOTA_EXCEEDED", "AI provider quota is unavailable", false);
+  try {
+    const text = await readLimitedText(response, MAX_ERROR_RESPONSE_BYTES);
+    const payload = JSON.parse(text) as { error?: { code?: unknown; type?: unknown; message?: unknown } };
+    const providerCode = sanitizedProviderDetail(payload.error?.code ?? payload.error?.type, secrets);
+    const providerMessage = sanitizedProviderDetail(payload.error?.message, secrets);
+    if (providerMessage) message += `：${providerMessage}`;
+    if (providerCode) message += ` [${providerCode}]`;
+  } catch {
+    await response.body?.cancel().catch(() => undefined);
   }
-  if (status === 429) {
-    return new AiProviderError("AI_PROVIDER_RATE_LIMITED", "AI provider rate limit was reached", true);
-  }
-  return new AiProviderError(
-    "AI_PROVIDER_UNAVAILABLE",
-    `AI provider is unavailable (${status})`,
-    status >= 500,
+  const requestId = sanitizedProviderDetail(
+    response.headers.get("x-request-id")
+      ?? response.headers.get("request-id")
+      ?? response.headers.get("cf-ray"),
+    secrets,
   );
+  if (requestId) message += `（供应商请求 ID：${requestId}）`;
+  return new AiProviderError(code, message, retryable);
 }
 
 function requestSignal(timeoutMs: number, external?: AbortSignal) {
@@ -209,12 +257,23 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
   readonly type = "openai_compatible" as const;
   private readonly fetcher?: Fetcher;
   private readonly resolver?: AddressResolver;
-  private readonly timeoutMs: number;
+  private readonly textTimeoutMs: number;
+  private readonly imageTimeoutMs: number;
+  private readonly reversePromptTimeoutMs: number;
+  private readonly connectionTimeoutMs: number;
 
   constructor(options: OpenAiCompatibleOptions = {}) {
     this.fetcher = options.fetcher;
     this.resolver = options.resolver;
-    this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.textTimeoutMs = options.timeoutMs
+      ?? configuredTimeout("AI_TEXT_TIMEOUT_MS", DEFAULT_TEXT_TIMEOUT_MS, 10_000, 300_000);
+    this.imageTimeoutMs = options.imageTimeoutMs
+      ?? configuredTimeout("AI_IMAGE_TIMEOUT_MS", DEFAULT_IMAGE_TIMEOUT_MS, 120_000, 1_800_000);
+    this.reversePromptTimeoutMs = options.reversePromptTimeoutMs
+      ?? configuredTimeout("AI_REVERSE_PROMPT_TIMEOUT_MS", DEFAULT_REVERSE_PROMPT_TIMEOUT_MS, 30_000, 600_000);
+    this.connectionTimeoutMs = options.connectionTimeoutMs
+      ?? options.timeoutMs
+      ?? configuredTimeout("AI_CONNECTION_TIMEOUT_MS", DEFAULT_CONNECTION_TIMEOUT_MS, 3_000, 60_000);
   }
 
   async generateImages(input: AiImageGenerationInput): Promise<AiImageGenerationResult> {
@@ -239,7 +298,7 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
         ...(isGptImage2Model(input.modelId) ? { output_format: "jpeg", output_compression: 90 } : {}),
       }),
       redirect: "manual",
-      signal: requestSignal(Math.max(this.timeoutMs, 120_000), input.signal),
+      signal: requestSignal(this.imageTimeoutMs, input.signal),
     };
     let response: Response;
     try {
@@ -249,14 +308,18 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
     } catch (error) {
       if (error instanceof AiProviderError) throw error;
       if (error instanceof DOMException && error.name === "TimeoutError") {
-        throw new AiProviderError("AI_PROVIDER_TIMEOUT", "AI provider request timed out", true);
+        throw new AiProviderError(
+          "AI_PROVIDER_TIMEOUT",
+          "图片生成等待超时。为避免供应商后台重复生成，本任务不会自动重试",
+          false,
+        );
       }
       throw new AiProviderError("AI_PROVIDER_UNAVAILABLE", "AI provider could not be reached", true);
     }
     if (response.status >= 300 && response.status < 400) {
       throw new AiProviderError("AI_PROVIDER_REDIRECT_BLOCKED", "AI provider redirected the request", false);
     }
-    if (!response.ok) throw statusError(response.status);
+    if (!response.ok) throw await statusError(response, [input.apiKey]);
     const text = await readLimitedText(response, MAX_IMAGE_RESPONSE_BYTES);
     let payload: unknown;
     try {
@@ -322,7 +385,7 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
           stream: false,
         }),
         redirect: "manual",
-        signal: requestSignal(Math.max(this.timeoutMs, 60_000), input.signal),
+        signal: requestSignal(this.reversePromptTimeoutMs, input.signal),
       };
       response = await (this.fetcher
         ? this.fetcher(url, init)
@@ -337,7 +400,7 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
     if (response.status >= 300 && response.status < 400) {
       throw new AiProviderError("AI_PROVIDER_REDIRECT_BLOCKED", "AI provider redirected the request", false);
     }
-    if (!response.ok) throw statusError(response.status);
+    if (!response.ok) throw await statusError(response, [input.apiKey]);
     const text = await readLimitedText(response);
     let payload: unknown;
     try {
@@ -373,7 +436,7 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
           stream: false,
         }),
         redirect: "manual",
-        signal: requestSignal(this.timeoutMs, input.signal),
+        signal: requestSignal(this.textTimeoutMs, input.signal),
       };
       response = await (this.fetcher
         ? this.fetcher(url, init)
@@ -392,7 +455,7 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
         false,
       );
     }
-    if (!response.ok) throw statusError(response.status);
+    if (!response.ok) throw await statusError(response, [input.apiKey]);
     const text = await readLimitedText(response);
     let payload: unknown;
     try {
@@ -422,12 +485,12 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
           method: "GET",
           headers: { authorization: `Bearer ${input.apiKey}` },
           redirect: "manual",
-          signal: requestSignal(this.timeoutMs),
+          signal: requestSignal(this.connectionTimeoutMs),
         })
         : secureOutboundFetch(url, {
           method: "GET",
           headers: { authorization: `Bearer ${input.apiKey}` },
-          signal: requestSignal(this.timeoutMs),
+          signal: requestSignal(this.connectionTimeoutMs),
         }, { resolver: this.resolver }));
     } catch (error) {
       if (error instanceof AiProviderError) throw error;
@@ -443,7 +506,7 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
         false,
       );
     }
-    if (!response.ok) throw statusError(response.status);
+    if (!response.ok) throw await statusError(response, [input.apiKey]);
     const text = await readLimitedText(response);
     let payload: unknown;
     try {
