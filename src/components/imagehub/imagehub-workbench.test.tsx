@@ -90,6 +90,64 @@ describe("AI ImageHub workbench", () => {
     await waitFor(() => expect(editor).toHaveValue("A reconstructed cinematic prompt"));
   });
 
+  it("downloads a generated image as a file without opening a new tab", async () => {
+    let releaseDownload: (response: Response) => void = () => undefined;
+    const pendingDownload = new Promise<Response>((resolve) => { releaseDownload = resolve; });
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/api/v1/generations?") && !url.includes("/download")) return Response.json({ data: [job("succeeded")] });
+      if (url.endsWith(`/assets/${resultAsset.id}/download`)) return pendingDownload;
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const createObjectUrl = vi.fn(() => "blob:download-test");
+    const revokeObjectUrl = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectUrl });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectUrl });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    render(<ImageHubWorkbench />);
+    await screen.findByText("生成完成");
+    fireEvent.click(screen.getByRole("button", { name: "下载" }));
+    expect(screen.getByRole("button", { name: "准备中…" })).toBeDisabled();
+    releaseDownload(new Response(new Blob(["image"]), {
+      headers: {
+        "content-disposition": 'attachment; filename="prompt-notebook-result.png"',
+        "content-type": "image/png",
+      },
+    }));
+
+    await screen.findByText("图片下载已开始。");
+    expect(fetcher).toHaveBeenCalledWith(expect.stringContaining(`/assets/${resultAsset.id}/download`));
+    expect(createObjectUrl).toHaveBeenCalledOnce();
+    expect(click).toHaveBeenCalledOnce();
+    expect(document.querySelector('a[target="_blank"]')).not.toBeInTheDocument();
+  });
+
+  it("disables note saving immediately and sends a stable idempotency key", async () => {
+    let releaseSave: (response: Response) => void = () => undefined;
+    const pendingSave = new Promise<Response>((resolve) => { releaseSave = resolve; });
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/api/v1/generations?") && !init?.method) return Response.json({ data: [job("succeeded")] });
+      if (url === "/api/v1/notes" && init?.method === "POST") return pendingSave;
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    render(<ImageHubWorkbench />);
+    await screen.findByText("生成完成");
+    const save = screen.getByRole("button", { name: "保存为笔记" });
+    fireEvent.click(save);
+    fireEvent.click(save);
+    expect(screen.getByRole("button", { name: "保存中…" })).toBeDisabled();
+    expect(fetcher.mock.calls.filter(([url]) => String(url) === "/api/v1/notes")).toHaveLength(1);
+    releaseSave(Response.json({ data: { id: "note-1" }, meta: { replayed: false } }, { status: 201 }));
+
+    await screen.findByText("已保存为新的提示词笔记。");
+    expect(screen.getByRole("button", { name: "已保存" })).toBeDisabled();
+    const saveCall = fetcher.mock.calls.find(([url]) => String(url) === "/api/v1/notes");
+    expect(new Headers(saveCall?.[1]?.headers).get("idempotency-key")).toBe(`imagehub-note:${resultAsset.jobId}`);
+  });
+
   it("deletes a failed history card after confirmation", async () => {
     const failed = { ...job("failed"), errorMessage: "Provider rejected the request" };
     const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {

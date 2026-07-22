@@ -4,6 +4,18 @@ All notable changes use the Keep a Changelog structure. Versions follow Semantic
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-07-22
+
+### Added
+
+- Added same-origin authenticated image downloads with attachment filenames, so ImageHub results download directly instead of opening the image host in a new tab.
+- Added visible per-job progress, success and failure feedback for ImageHub download, copy, cover, cancel, delete and save actions.
+
+### Fixed
+
+- Disabled asynchronous action buttons while requests are running and added tactile pressed/loading animation.
+- Made saving an ImageHub result to notes idempotent for one year, preventing duplicate notes after repeated clicks, refreshes or network retries.
+
 ## [1.1.1] - 2026-07-22
 
 ### Added

@@ -12,7 +12,11 @@ import {
 } from "@/db/schema";
 import { ApiError } from "@/lib/api/errors";
 
-import { PicbedGenerationMediaStore, type GenerationMediaStore } from "./generation-media-store";
+import {
+  PicbedGenerationMediaStore,
+  type GenerationMediaStore,
+  type StoredGenerationAsset,
+} from "./generation-media-store";
 import { BullMqGenerationQueue, type GenerationQueue } from "./generation-queue";
 import { createGenerationSchema, type CreateGenerationInput } from "./generation-schema";
 
@@ -172,6 +176,32 @@ export class GenerationService {
       .returning({ id: aiGenerationJobs.id });
     if (!deleted) throw new ApiError(404, "GENERATION_NOT_FOUND", "Generation job was not found");
     return { id: deleted.id, deleted: true };
+  }
+
+  async downloadAsset(userId: string, jobId: string, assetId: string) {
+    const [asset] = await db.select().from(aiGenerationAssets).where(and(
+      eq(aiGenerationAssets.id, assetId),
+      eq(aiGenerationAssets.jobId, jobId),
+      eq(aiGenerationAssets.userId, userId),
+      eq(aiGenerationAssets.role, "result"),
+    )).limit(1);
+    if (!asset) throw new ApiError(404, "GENERATION_ASSET_NOT_FOUND", "生成图片不存在或已被删除");
+    const stored: StoredGenerationAsset = {
+      storageProvider: "picbed",
+      objectKey: asset.objectKey,
+      displayUrl: asset.displayUrl,
+      thumbnailUrl: asset.thumbnailUrl,
+      mimeType: asset.mimeType,
+      width: asset.width,
+      height: asset.height,
+      sizeBytes: asset.sizeBytes,
+    };
+    const extension = asset.mimeType === "image/jpeg" ? "jpg" : asset.mimeType === "image/webp" ? "webp" : "png";
+    return {
+      data: await this.media.read(stored),
+      mimeType: asset.mimeType,
+      filename: `prompt-notebook-${jobId.slice(0, 8)}-${asset.ordinal + 1}.${extension}`,
+    };
   }
 
   async recoverStale(staleBefore: Date) {

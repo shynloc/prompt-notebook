@@ -1,5 +1,6 @@
 import { errorResponse, dataResponse } from "@/lib/api/response";
 import { requireSession } from "@/lib/auth/session";
+import { z } from "zod";
 import {
   createNoteSchema,
   listNotesSchema,
@@ -7,6 +8,7 @@ import {
 import { NoteService } from "@/modules/notes/note-service";
 
 const notes = new NoteService();
+const idempotencyKeySchema = z.string().regex(/^imagehub-note:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
 
 export async function GET(request: Request) {
   try {
@@ -38,8 +40,10 @@ export async function POST(request: Request) {
   try {
     const session = await requireSession(request);
     const input = createNoteSchema.parse(await request.json());
-    const created = await notes.create(session.user.id, input);
-    return dataResponse(created, { status: 201 });
+    const keyHeader = request.headers.get("idempotency-key");
+    if (!keyHeader) return dataResponse(await notes.create(session.user.id, input), { status: 201 });
+    const result = await notes.createIdempotent(session.user.id, idempotencyKeySchema.parse(keyHeader), input);
+    return dataResponse(result.note, { status: result.replayed ? 200 : 201 }, { replayed: result.replayed });
   } catch (error) {
     return errorResponse(error);
   }

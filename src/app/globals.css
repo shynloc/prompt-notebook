@@ -37,6 +37,19 @@ select {
   font: inherit;
 }
 
+button {
+  transition: opacity 140ms ease, transform 90ms ease;
+}
+
+button:not(:disabled):active {
+  transform: translateY(1px) scale(0.98);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

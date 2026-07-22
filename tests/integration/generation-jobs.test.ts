@@ -184,6 +184,10 @@ describe("durable generation jobs", () => {
     expect(job.status).toBe("succeeded");
     expect(job.assets).toHaveLength(1);
     expect(JSON.stringify(job)).not.toContain(png.toString("base64"));
+    await expect(service.downloadAsset(owner.userId, created.id, job.assets[0].id))
+      .resolves.toMatchObject({ data: png, mimeType: "image/png", filename: expect.stringMatching(/\.png$/) });
+    await expect(service.downloadAsset("not-the-owner", created.id, job.assets[0].id))
+      .rejects.toMatchObject({ code: "GENERATION_ASSET_NOT_FOUND", status: 404 });
   });
 
   it("records retryable failures and stops after the configured attempt limit", async () => {

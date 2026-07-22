@@ -59,11 +59,24 @@ function noteImage(asset: GenerationAsset): NoteImage {
   };
 }
 
+function filenameFromDisposition(value: string | null, fallback: string) {
+  const encoded = value?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const plain = value?.match(/filename="?([^";]+)"?/i)?.[1];
+  let candidate = plain;
+  try {
+    if (encoded) candidate = decodeURIComponent(encoded);
+  } catch {
+    candidate = plain;
+  }
+  return candidate?.replace(/[\\/:*?"<>|]/g, "-") || fallback;
+}
+
 export function ImageHubWorkbench() {
   const searchParams = useSearchParams();
   const sourceNoteId = searchParams.get("note");
   const initialized = useRef(false);
   const pollAttempt = useRef(0);
+  const pendingActionKeys = useRef(new Set<string>());
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
   const [negativePrompt, setNegativePrompt] = useState("");
@@ -77,11 +90,30 @@ export function ImageHubWorkbench() {
   const [pollCycle, setPollCycle] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
+  const [pendingActions, setPendingActions] = useState<Set<string>>(() => new Set());
+  const [jobFeedback, setJobFeedback] = useState<Record<string, string>>({});
+  const [savedJobs, setSavedJobs] = useState<Set<string>>(() => new Set());
   const [reverse, setReverse] = useState<{ status: "loading" | "ready" | "error"; prompt?: string; model?: string; message?: string } | null>(null);
   const [optimization, setOptimization] = useState<PromptOptimizationState | null>(null);
   const { width, height } = imageSizeFor(aspectRatio, resolution);
   const referencePreviews = useMemo(() => references.map((file) => ({ file, url: URL.createObjectURL(file) })), [references]);
   const activeJobs = useMemo(() => jobs.filter((job) => activeStatuses.includes(job.status)), [jobs]);
+
+  function beginAction(key: string) {
+    if (pendingActionKeys.current.has(key)) return false;
+    pendingActionKeys.current.add(key);
+    setPendingActions(new Set(pendingActionKeys.current));
+    return true;
+  }
+
+  function finishAction(key: string) {
+    pendingActionKeys.current.delete(key);
+    setPendingActions(new Set(pendingActionKeys.current));
+  }
+
+  function feedback(jobId: string, text: string) {
+    setJobFeedback((current) => ({ ...current, [jobId]: text }));
+  }
 
   useEffect(() => () => referencePreviews.forEach((preview) => URL.revokeObjectURL(preview.url)), [referencePreviews]);
 
@@ -194,21 +226,43 @@ export function ImageHubWorkbench() {
   }
 
   async function cancel(jobId: string) {
-    const response = await fetch(`/api/v1/generations/${jobId}?mode=cancel`, { method: "DELETE" });
-    const body = await response.json();
-    if (response.ok) setJobs((current) => current.map((job) => job.id === jobId ? body.data : job));
-    else setMessage(apiMessage(body, "取消任务失败。"));
+    const key = `cancel:${jobId}`;
+    if (!beginAction(key)) return;
+    feedback(jobId, "正在取消任务…");
+    try {
+      const response = await fetch(`/api/v1/generations/${jobId}?mode=cancel`, { method: "DELETE" });
+      const body = await response.json().catch(() => null);
+      if (response.ok) {
+        setJobs((current) => current.map((job) => job.id === jobId ? body.data : job));
+        feedback(jobId, "取消请求已提交。");
+      } else {
+        feedback(jobId, apiMessage(body, "取消任务失败。"));
+      }
+    } catch {
+      feedback(jobId, "无法连接取消任务服务。");
+    } finally {
+      finishAction(key);
+    }
   }
 
   async function removeHistory(job: GenerationJob) {
     if (!window.confirm("确认删除这条生成历史？此操作不会删除已经保存到提示词笔记中的图片。")) return;
-    const response = await fetch(`/api/v1/generations/${job.id}?mode=history`, { method: "DELETE" });
-    const body = await response.json().catch(() => null);
-    if (response.ok) {
-      setJobs((current) => current.filter((candidate) => candidate.id !== job.id));
-      setMessage("生成历史已删除。");
-    } else {
-      setMessage(apiMessage(body, "删除生成历史失败。"));
+    const key = `delete:${job.id}`;
+    if (!beginAction(key)) return;
+    feedback(job.id, "正在删除记录…");
+    try {
+      const response = await fetch(`/api/v1/generations/${job.id}?mode=history`, { method: "DELETE" });
+      const body = await response.json().catch(() => null);
+      if (response.ok) {
+        setJobs((current) => current.filter((candidate) => candidate.id !== job.id));
+        setMessage("生成历史已删除。");
+      } else {
+        feedback(job.id, apiMessage(body, "删除生成历史失败。"));
+      }
+    } catch {
+      feedback(job.id, "无法连接删除历史服务。");
+    } finally {
+      finishAction(key);
     }
   }
 
@@ -262,42 +316,111 @@ export function ImageHubWorkbench() {
   }
 
   async function saveAsNote(job: GenerationJob) {
-    const images = job.assets.filter((asset) => asset.role === "result").map(noteImage);
-    const response = await fetch("/api/v1/notes", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        title: title.trim() || job.prompt.slice(0, 60),
-        prompt: job.prompt,
-        negativePrompt: job.negativePrompt,
-        model: job.modelName,
-        tags: ["AI 生成"],
-        images,
-        parameters: { generationJobId: job.id, width: job.width, height: job.height, quality: job.quality },
-      }),
-    });
-    const body = await response.json();
-    setMessage(response.ok ? "已保存为新的提示词笔记。" : apiMessage(body, "保存笔记失败。"));
+    const key = `save:${job.id}`;
+    if (savedJobs.has(job.id) || !beginAction(key)) return;
+    feedback(job.id, "正在保存为笔记…");
+    try {
+      const images = job.assets.filter((asset) => asset.role === "result").map(noteImage);
+      const response = await fetch("/api/v1/notes", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": `imagehub-note:${job.id}`,
+        },
+        body: JSON.stringify({
+          title: title.trim() || job.prompt.slice(0, 60),
+          prompt: job.prompt,
+          negativePrompt: job.negativePrompt,
+          model: job.modelName,
+          tags: ["AI 生成"],
+          images,
+          parameters: { generationJobId: job.id, width: job.width, height: job.height, quality: job.quality },
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (response.ok) {
+        const text = body?.meta?.replayed ? "这条生成结果已经保存过，不会重复创建。" : "已保存为新的提示词笔记。";
+        setSavedJobs((current) => new Set(current).add(job.id));
+        feedback(job.id, text);
+      } else {
+        feedback(job.id, apiMessage(body, "保存笔记失败。"));
+      }
+    } catch {
+      feedback(job.id, "无法连接笔记保存服务。");
+    } finally {
+      finishAction(key);
+    }
   }
 
   async function attachAsCover(job: GenerationJob, asset: GenerationAsset) {
     if (!sourceNoteId) return;
-    const noteResponse = await fetch(`/api/v1/notes/${sourceNoteId}`, { cache: "no-store" });
-    const noteBody = await noteResponse.json();
-    if (!noteResponse.ok) {
-      setMessage(apiMessage(noteBody, "无法读取原笔记。"));
-      return;
+    const key = `cover:${asset.id}`;
+    if (!beginAction(key)) return;
+    feedback(job.id, "正在设置笔记封面…");
+    try {
+      const noteResponse = await fetch(`/api/v1/notes/${sourceNoteId}`, { cache: "no-store" });
+      const noteBody = await noteResponse.json().catch(() => null);
+      if (!noteResponse.ok) {
+        feedback(job.id, apiMessage(noteBody, "无法读取原笔记。"));
+        return;
+      }
+      const note = noteBody.data as NoteView;
+      const image = noteImage(asset);
+      const images = [image, ...note.images.filter((current) => current.objectKey !== image.objectKey)].slice(0, 8);
+      const response = await fetch(`/api/v1/notes/${sourceNoteId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ version: note.version, images }),
+      });
+      const body = await response.json().catch(() => null);
+      const text = response.ok ? "生成图已设为原笔记封面。" : apiMessage(body, "设置封面失败。");
+      feedback(job.id, text);
+    } catch {
+      feedback(job.id, "无法连接笔记封面服务。");
+    } finally {
+      finishAction(key);
     }
-    const note = noteBody.data as NoteView;
-    const image = noteImage(asset);
-    const images = [image, ...note.images.filter((current) => current.objectKey !== image.objectKey)].slice(0, 8);
-    const response = await fetch(`/api/v1/notes/${sourceNoteId}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ version: note.version, images }),
-    });
-    const body = await response.json();
-    setMessage(response.ok ? "生成图已设为原笔记封面。" : apiMessage(body, "设置封面失败。"));
+  }
+
+  async function downloadAsset(job: GenerationJob, asset: GenerationAsset) {
+    const key = `download:${asset.id}`;
+    if (!beginAction(key)) return;
+    feedback(job.id, "正在准备图片文件…");
+    try {
+      const response = await fetch(`/api/v1/generations/${job.id}/assets/${asset.id}/download`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        feedback(job.id, apiMessage(body, "图片下载失败。"));
+        return;
+      }
+      const blobUrl = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = blobUrl;
+      anchor.download = filenameFromDisposition(response.headers.get("content-disposition"), `prompt-notebook-${asset.id}.png`);
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1_000);
+      feedback(job.id, "图片下载已开始。");
+    } catch {
+      feedback(job.id, "无法准备图片下载，请稍后重试。");
+    } finally {
+      finishAction(key);
+    }
+  }
+
+  async function copyPrompt(job: GenerationJob) {
+    const key = `copy:${job.id}`;
+    if (!beginAction(key)) return;
+    feedback(job.id, "正在复制 Prompt…");
+    try {
+      await navigator.clipboard.writeText(job.prompt);
+      feedback(job.id, "Prompt 已复制到剪贴板。");
+    } catch {
+      feedback(job.id, "复制失败，请检查浏览器剪贴板权限。");
+    } finally {
+      finishAction(key);
+    }
   }
 
   return (
@@ -359,10 +482,11 @@ export function ImageHubWorkbench() {
               {results.length ? <div className="imagehub-filmstrip">{results.map((asset, index) => <figure key={asset.id}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={asset.thumbnailUrl || asset.displayUrl} alt={`生成作品 ${index + 1}`} />
-                <figcaption><button type="button" onClick={() => void reverseFrom(asset)}>反推</button><a download href={asset.displayUrl} target="_blank" rel="noopener noreferrer">下载</a>{sourceNoteId ? <button type="button" onClick={() => void attachAsCover(job, asset)}>设为封面</button> : null}</figcaption>
+                <figcaption><button type="button" onClick={() => void reverseFrom(asset)}>反推</button><button aria-busy={pendingActions.has(`download:${asset.id}`)} disabled={pendingActions.has(`download:${asset.id}`)} type="button" onClick={() => void downloadAsset(job, asset)}>{pendingActions.has(`download:${asset.id}`) ? "准备中…" : "下载"}</button>{sourceNoteId ? <button aria-busy={pendingActions.has(`cover:${asset.id}`)} disabled={pendingActions.has(`cover:${asset.id}`)} type="button" onClick={() => void attachAsCover(job, asset)}>{pendingActions.has(`cover:${asset.id}`) ? "设置中…" : "设为封面"}</button> : null}</figcaption>
               </figure>)}</div> : <div className="imagehub-placeholder"><span>{job.status === "failed" ? "!" : "◌"}</span><p>{job.errorMessage || "任务正在等待图像结果"}</p></div>}
               <p className="imagehub-job__prompt">{job.prompt}</p>
-              <footer>{activeStatuses.includes(job.status) ? <button type="button" onClick={() => void cancel(job.id)}>取消任务</button> : null}{job.status === "succeeded" ? <button type="button" onClick={() => void saveAsNote(job)}>保存为笔记</button> : null}<button type="button" onClick={() => navigator.clipboard.writeText(job.prompt)}>复制 Prompt</button>{!activeStatuses.includes(job.status) ? <button type="button" onClick={() => void removeHistory(job)}>删除记录</button> : null}</footer>
+              {jobFeedback[job.id] ? <p className="imagehub-job__feedback" role="status">{jobFeedback[job.id]}</p> : null}
+              <footer>{activeStatuses.includes(job.status) ? <button aria-busy={pendingActions.has(`cancel:${job.id}`)} disabled={pendingActions.has(`cancel:${job.id}`)} type="button" onClick={() => void cancel(job.id)}>{pendingActions.has(`cancel:${job.id}`) ? "取消中…" : "取消任务"}</button> : null}{job.status === "succeeded" ? <button aria-busy={pendingActions.has(`save:${job.id}`)} disabled={pendingActions.has(`save:${job.id}`) || savedJobs.has(job.id)} type="button" onClick={() => void saveAsNote(job)}>{pendingActions.has(`save:${job.id}`) ? "保存中…" : savedJobs.has(job.id) ? "已保存" : "保存为笔记"}</button> : null}<button aria-busy={pendingActions.has(`copy:${job.id}`)} disabled={pendingActions.has(`copy:${job.id}`)} type="button" onClick={() => void copyPrompt(job)}>{pendingActions.has(`copy:${job.id}`) ? "复制中…" : "复制 Prompt"}</button>{!activeStatuses.includes(job.status) ? <button aria-busy={pendingActions.has(`delete:${job.id}`)} disabled={pendingActions.has(`delete:${job.id}`)} type="button" onClick={() => void removeHistory(job)}>{pendingActions.has(`delete:${job.id}`) ? "删除中…" : "删除记录"}</button> : null}</footer>
             </article>;
           })}</div> : <div className="imagehub-empty"><span>NO EXPOSURES YET</span><h3>还没有生成记录</h3><p>从左侧输入第一条提示词，任务会在这里持续更新。</p></div>}
         </section>

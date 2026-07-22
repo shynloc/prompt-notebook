@@ -18,9 +18,9 @@ const authBase = "http://localhost:3000/api/auth";
 
 function request(
   url: string,
-  options: { body?: unknown; cookie?: string; method?: string } = {},
+  options: { body?: unknown; cookie?: string; headers?: Record<string, string>; method?: string } = {},
 ) {
-  const headers = new Headers();
+  const headers = new Headers(options.headers);
   if (options.body !== undefined) headers.set("content-type", "application/json");
   if (options.cookie) headers.set("cookie", options.cookie);
   return new Request(url, {
@@ -84,6 +84,28 @@ describe("user-scoped notes API", () => {
     expect(firstBody.data).toHaveLength(2);
     expect(firstBody.meta.nextCursor).toEqual(expect.any(String));
     expect(secondBody.data).toHaveLength(1);
+  });
+
+  it("replays an idempotent note save without creating a duplicate", async () => {
+    const { cookie } = await sessionFor("idempotent-note");
+    const key = `imagehub-note:${randomUUID()}`;
+    const body = { title: "Generated portrait", prompt: "soft cinematic light" };
+    const first = await createNote(request(apiBase, { cookie, body, headers: { "idempotency-key": key } }));
+    const replay = await createNote(request(apiBase, { cookie, body, headers: { "idempotency-key": key } }));
+    const changed = await createNote(request(apiBase, {
+      cookie,
+      body: { ...body, title: "Changed title" },
+      headers: { "idempotency-key": key },
+    }));
+    const firstBody = await first.json();
+    const replayBody = await replay.json();
+
+    expect(first.status).toBe(201);
+    expect(replay.status).toBe(200);
+    expect(replayBody.data.id).toBe(firstBody.data.id);
+    expect(replayBody.meta.replayed).toBe(true);
+    expect(changed.status).toBe(200);
+    expect((await changed.json()).data.id).toBe(firstBody.data.id);
   });
 
   it("updates atomically and returns the server note on version conflict", async () => {

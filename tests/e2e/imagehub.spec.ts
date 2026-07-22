@@ -61,9 +61,14 @@ test("restores, polls, reverses, and saves an ImageHub generation on mobile", as
     }
     return route.fulfill({ json: { data: succeeded } });
   });
+  await page.route(`**/api/v1/generations/${jobId}/assets/asset-1/download`, (route) => route.fulfill({
+    body: "generated-image",
+    contentType: "image/png",
+    headers: { "content-disposition": 'attachment; filename="prompt-notebook-result.png"' },
+  }));
   await page.route("**/api/v1/ai/reverse-prompt", (route) => route.fulfill({ json: { data: { prompt: "A reconstructed prompt", model: { name: "Vision" } } } }));
   await page.route("**/api/v1/notes", async (route) => {
-    if (route.request().method() === "POST") await route.fulfill({ status: 201, json: { data: { id: "note-1" } } });
+    if (route.request().method() === "POST") await route.fulfill({ status: 201, json: { data: { id: "note-1" }, meta: { replayed: false } } });
     else await route.fallback();
   });
   await page.route(`**/api/v1/notes/${sourceNoteId}`, async (route) => {
@@ -88,6 +93,10 @@ test("restores, polls, reverses, and saves an ImageHub generation on mobile", as
   await page.getByRole("button", { name: /开始生成/ }).click();
   await expect(page.getByText("已进入生成队列")).toBeVisible();
   await expect(page.getByText("生成完成")).toBeVisible({ timeout: 12_000 });
+  const downloadEvent = page.waitForEvent("download");
+  await page.getByRole("button", { name: "下载" }).click();
+  expect((await downloadEvent).suggestedFilename()).toBe("prompt-notebook-result.png");
+  await expect(page.getByText("图片下载已开始。")).toBeVisible();
   await page.getByRole("button", { name: "反推" }).click();
   await expect(page.getByLabel("反推提示词")).toHaveValue("A reconstructed prompt");
   await expect(page.getByLabel("Prompt")).toHaveValue(queued.prompt);
@@ -97,6 +106,7 @@ test("restores, polls, reverses, and saves an ImageHub generation on mobile", as
   await expect(page.getByText("生成图已设为原笔记封面。")).toBeVisible();
   await page.getByRole("button", { name: "保存为笔记" }).click();
   await expect(page.getByText("已保存为新的提示词笔记。")).toBeVisible();
+  await expect(page.getByRole("button", { name: "已保存" })).toBeDisabled();
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "删除记录" }).click();
   await expect(page.getByText("生成历史已删除。")).toBeVisible();

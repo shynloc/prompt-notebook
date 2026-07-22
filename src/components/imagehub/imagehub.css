@@ -402,8 +402,31 @@
   -webkit-line-clamp: 3;
 }
 
+.imagehub-job__feedback {
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  border-left: 3px solid var(--color-success);
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin: 0 0 var(--space-3);
+  padding: 0.45rem 0.55rem;
+}
+
 .imagehub-job > footer { border-top: 1px solid rgb(25 24 22 / 18%); display: flex; flex-wrap: wrap; gap: var(--space-2); padding-top: var(--space-3); }
 .imagehub-job > footer button { background: transparent; border: 1px solid var(--color-border); cursor: pointer; font-size: 0.7rem; font-weight: 800; padding: 0.4rem 0.55rem; }
+.imagehub-job button[aria-busy="true"]::before {
+  animation: imagehub-spin 700ms linear infinite;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  content: "";
+  display: inline-block;
+  height: 0.7rem;
+  margin-right: 0.35rem;
+  vertical-align: -0.08rem;
+  width: 0.7rem;
+}
+
+.imagehub-job button[aria-busy="true"]:disabled { cursor: wait; }
 
 .imagehub-empty {
   align-items: center;
@@ -449,6 +472,10 @@
 
 @keyframes imagehub-pulse {
   50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--color-stamp) 2%, transparent); transform: scale(0.85); }
+}
+
+@keyframes imagehub-spin {
+  to { transform: rotate(360deg); }
 }
 
 @media (min-width: 48rem) {

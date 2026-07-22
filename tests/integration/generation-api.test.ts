@@ -8,6 +8,7 @@ import { createReversePromptHandler } from "@/app/api/v1/ai/reverse-prompt/route
 import { POST as createConfiguration } from "@/app/api/v1/ai/configurations/route";
 import { PATCH as patchPreference } from "@/app/api/v1/ai/preferences/route";
 import { createGenerationDetailHandlers } from "@/app/api/v1/generations/[id]/route";
+import { createGenerationAssetDownloadHandler } from "@/app/api/v1/generations/[id]/assets/[assetId]/download/route";
 import { createGenerationHandlers } from "@/app/api/v1/generations/route";
 import { auth } from "@/lib/auth/server";
 import { AiProviderRegistry } from "@/modules/ai/provider-registry";
@@ -127,6 +128,23 @@ describe("generation API", () => {
     });
     expect(deleted.status).toBe(200);
     expect(removeHistory).toHaveBeenCalledWith(owner.userId, id);
+  });
+
+  it("downloads an owned generated asset as a file attachment", async () => {
+    const owner = await sessionFor();
+    const jobId = randomUUID();
+    const assetId = randomUUID();
+    const downloadAsset = vi.fn(async () => ({ data: png, mimeType: "image/png", filename: "prompt-notebook-result.png" }));
+    const handler = createGenerationAssetDownloadHandler({ downloadAsset });
+    const response = await handler(request(`${base}/api/v1/generations/${jobId}/assets/${assetId}/download`, { cookie: owner.cookie }), {
+      params: Promise.resolve({ id: jobId, assetId }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="prompt-notebook-result.png"');
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(png);
+    expect(downloadAsset).toHaveBeenCalledWith(owner.userId, jobId, assetId);
   });
 
   it("validates an uploaded image before calling reverse prompting", async () => {
