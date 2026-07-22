@@ -3,7 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 test.describe.configure({ mode: "serial" });
 
 async function signUp(page: Page, label: string) {
-  const email = `${label}-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
+  const emailLabel = label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const email = `${emailLabel}-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
   await page.goto("/sign-up");
   await page.getByLabel("昵称").fill(label);
   await page.getByLabel("邮箱").fill(email);
@@ -53,4 +54,51 @@ test("organizes prompts and recovers an unsaved local draft", async ({ page }) =
   await page.getByRole("button", { name: "恢复草稿" }).click();
   await expect(page.getByLabel("标题")).toHaveValue("Unsaved local draft");
   await expect(page.locator('textarea[name="prompt"]')).toHaveValue("work that must survive a reload");
+});
+
+test("keeps a card cover and tags after toggling favorite", async ({ page }) => {
+  const title = `Favorite cover ${Date.now()}`;
+  const imageUrl = "https://images.example.com/favorite-cover.png";
+  await page.route(imageUrl, (route) => route.fulfill({
+    status: 200,
+    contentType: "image/png",
+    body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"),
+  }));
+  await signUp(page, "Favorite Cover User");
+  const created = await page.evaluate(async ({ noteTitle, coverUrl }) => {
+    const response = await fetch("/api/v1/notes", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: noteTitle,
+        prompt: "preserve this cover while favoriting",
+        tags: ["封面回归"],
+        images: [{
+          storageProvider: "picbed",
+          objectKey: "tests/favorite-cover.png",
+          displayUrl: coverUrl,
+          thumbnailUrl: coverUrl,
+          mimeType: "image/png",
+          width: 1,
+          height: 1,
+          sizeBytes: 68,
+        }],
+      }),
+    });
+    return (await response.json()).data;
+  }, { noteTitle: title, coverUrl: imageUrl });
+
+  await page.goto("/notes");
+  const card = page.locator(".prompt-card").filter({ hasText: title });
+  await expect(card.locator(".prompt-card__visual img")).toHaveAttribute("src", imageUrl);
+  await expect(card.getByRole("link", { name: "封面回归" })).toBeVisible();
+  await card.getByRole("button", { name: "收藏", exact: true }).click();
+  await expect(card.getByRole("button", { name: "取消收藏", exact: true })).toBeVisible();
+  await expect(card.locator(".prompt-card__visual img")).toHaveAttribute("src", imageUrl);
+  await expect(card.getByRole("link", { name: "封面回归" })).toBeVisible();
+
+  const persisted = await page.evaluate(async (noteId) => (await (await fetch(`/api/v1/notes/${noteId}`)).json()).data, created.id);
+  expect(persisted.images).toHaveLength(1);
+  expect(persisted.coverImage.objectKey).toBe("tests/favorite-cover.png");
+  expect(persisted.tags).toHaveLength(1);
 });

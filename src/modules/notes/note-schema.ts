@@ -30,13 +30,15 @@ const noteFields = {
   parameters: z.record(z.string(), z.unknown()).optional(),
   favorite: z.boolean().optional(),
   archivedAt: z.coerce.date().nullable().optional(),
-  tags: z.array(tagNameSchema).max(20).default([]),
-  images: z.array(imageInputSchema).max(8).default([]),
+  tags: z.array(tagNameSchema).max(20),
+  images: z.array(imageInputSchema).max(8),
 };
 
 export const createNoteSchema = z.object({
   id: z.uuid().optional(),
   ...noteFields,
+  tags: noteFields.tags.default([]),
+  images: noteFields.images.default([]),
 });
 
 export const updateNoteSchema = z

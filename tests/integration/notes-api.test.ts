@@ -135,6 +135,40 @@ describe("user-scoped notes API", () => {
     expect(conflictBody.error.details.current.title).toBe("Client A");
   });
 
+  it("preserves tags and cover images during a favorite-only update", async () => {
+    const { cookie } = await sessionFor("favorite-relations");
+    const objectKey = `tests/${randomUUID()}.png`;
+    const note = await create(cookie, {
+      tags: ["电影感"],
+      images: [{
+        storageProvider: "picbed",
+        objectKey,
+        displayUrl: `https://images.example.com/${objectKey}`,
+        thumbnailUrl: `https://images.example.com/${objectKey}`,
+        mimeType: "image/png",
+        width: 512,
+        height: 512,
+        sizeBytes: 1024,
+      }],
+    });
+
+    const response = await patchNote(
+      request(`${apiBase}/${note.id}`, {
+        cookie,
+        method: "PATCH",
+        body: { favorite: true, version: note.version },
+      }),
+      routeContext(note.id),
+    );
+    const updated = (await response.json()).data;
+
+    expect(response.status).toBe(200);
+    expect(updated.favorite).toBe(true);
+    expect(updated.tags).toEqual(expect.arrayContaining([expect.objectContaining({ name: "电影感" })]));
+    expect(updated.images).toHaveLength(1);
+    expect(updated.coverImage.objectKey).toBe(objectKey);
+  });
+
   it("soft deletes and restores a note", async () => {
     const { cookie } = await sessionFor("restore");
     const note = await create(cookie);

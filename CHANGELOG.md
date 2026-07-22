@@ -4,6 +4,12 @@ All notable changes use the Keep a Changelog structure. Versions follow Semantic
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-07-22
+
+### Fixed
+
+- Preserved image covers and tags when a card-only action such as favorite or archive performs a partial note update.
+
 ## [1.2.0] - 2026-07-22
 
 ### Added
