@@ -13,6 +13,7 @@ export default function ProfilePage() {
         <div className="notebook-intro"><h3>登录状态</h3><SessionControls /><p>退出登录不会删除云端内容。再次登录后，笔记会从 PostgreSQL 重新读取。</p></div>
         <div className="notebook-intro"><h3>AI 助手</h3><p>配置用于提示词优化、图片生成和图片反推的大模型。API Key 只在服务端加密保存。</p><p><a className="primary-action" href="/settings/ai">管理 AI 助手配置</a></p></div>
         <div className="notebook-intro"><h3>图床</h3><p>为笔记图片、网页图片导入和 ImageHub 作品配置独立图片存储。令牌只在服务端加密保存。</p><p><a className="primary-action" href="/settings/storage">管理图床配置</a></p></div>
+        <div className="notebook-intro"><h3>提示词分享</h3><p>查看仍在有效期内的只读分享，并统一续期或关闭。</p><p><a className="primary-action" href="/shares">进入分享管理</a></p></div>
         <StorageStatus />
         <DataTransfer />
         <DeviceManager />

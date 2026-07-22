@@ -78,6 +78,13 @@
       "when": 1784688514732,
       "tag": "0010_goofy_rogue",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784704109283,
+      "tag": "0011_chilly_changeling",
+      "breakpoints": true
     }
   ]
 }

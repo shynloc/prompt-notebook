@@ -19,3 +19,4 @@ ADR 记录已确认的重大技术选择。若以后改变决定，应新增 ADR
 | [0013](0013-object-storage-only-generation-assets.md) | 生图资产仅进入对象存储 | Accepted |
 | [0014](0014-rebuild-aihub-capabilities-without-runtime-sharing.md) | 重构 AIHUB 能力但不共享运行时 | Accepted |
 | [0015](0015-user-owned-image-storage-and-public-release.md) | 用户级图床配置、脱敏公开与受控自动更新 | Accepted |
+| [0016](0016-short-recoverable-share-links.md) | 短链接、加密可恢复和可续期分享 | Accepted |

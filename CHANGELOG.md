@@ -4,6 +4,18 @@ All notable changes use the Keep a Changelog structure. Versions follow Semantic
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-22
+
+### Added
+
+- Added an active-share management page with preview, title, share and expiry dates, seven-day renewal, and immediate revocation.
+- Added a prominent share action to prompt previews with busy, success, error and clipboard-fallback feedback.
+
+### Changed
+
+- New share links now use a compact creation-date plus five-character random-code path while preserving legacy links until expiry.
+- Active owner links can be copied again because their token is encrypted with the server credential key ring while public lookup remains hash-only.
+
 ## [1.1.2] - 2026-07-22
 
 ### Added

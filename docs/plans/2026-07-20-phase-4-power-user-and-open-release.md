@@ -121,7 +121,7 @@
 2. Add extension settings and optional host permissions using Chrome runtime permission requests.
 3. Improve candidate-image provenance, recent saves, duplicate warnings, and offline retry.
 4. Add quick duplicate-as-new and paste/drop capture paths to the web editor.
-5. Store only hashed share tokens, return the raw token once, and rate-limit public reads.
+5. Store a hash for public share lookup and an owner-bound encrypted copy for authenticated re-copying, and rate-limit public reads.
 6. Add expiring, revocable, copy-controlled public share pages with no owner-data leakage.
 7. Build/package the extension, run permission/security checks, verify, and commit.
 

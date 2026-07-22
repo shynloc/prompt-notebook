@@ -10,7 +10,7 @@ describe("AppShell", () => {
       name: "桌面主导航",
     });
 
-    for (const label of ["全部提示词", "收藏", "归档", "回收站", "标签", "提示词百科", "图床设置", "新建 Prompt"]) {
+    for (const label of ["全部提示词", "收藏", "归档", "回收站", "分享管理", "标签", "提示词百科", "图床设置", "新建 Prompt"]) {
       expect(within(navigation).getByRole("link", { name: label })).toBeVisible();
     }
   });

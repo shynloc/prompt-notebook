@@ -3,6 +3,7 @@ const destinations = [
   ["收藏", "/favorites", "★"],
   ["归档", "/archive", "□"],
   ["回收站", "/trash", "↺"],
+  ["分享管理", "/shares", "↗"],
   ["标签", "/tags", "#"],
   ["项目", "/projects", "P"],
   ["变量模板", "/templates", "T"],
