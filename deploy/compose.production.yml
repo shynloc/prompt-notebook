@@ -40,7 +40,7 @@ services:
   web:
     image: ${APP_IMAGE:-prompt-notebook}:${IMAGE_TAG:-latest}
     build:
-      context: ..
+      context: .
       args:
         BUILD_APP_URL: ${APP_URL:?APP_URL is required}
     restart: unless-stopped

@@ -4,6 +4,10 @@ All notable changes use the Keep a Changelog structure. Versions follow Semantic
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-22
+
+- Fixed the production Compose build context for repository-root deployments.
+
 ## [1.0.0] - 2026-07-22
 
 ### Added
