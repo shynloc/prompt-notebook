@@ -32,7 +32,7 @@ function job(status: GenerationJob["status"]): GenerationJob {
     modelName: "Image Model",
     width: 1024,
     height: 1024,
-    quality: "standard",
+    quality: "auto",
     imageCount: 1,
     progress: status === "succeeded" ? 100 : 0,
     errorMessage: null,
@@ -58,9 +58,15 @@ describe("AI ImageHub workbench", () => {
     render(<ImageHubWorkbench />);
     await screen.findByText("还没有生成记录");
     fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "A paper observatory under a red moon" } });
+    fireEvent.click(screen.getByRole("button", { name: /手机竖屏/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^4K/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^精细\s*质量优先$/ }));
     fireEvent.click(screen.getByRole("button", { name: /开始生成/ }));
     await screen.findByText("已进入生成队列");
     expect(screen.getByLabelText("Prompt")).toHaveValue("A paper observatory under a red moon");
+    const createCall = fetcher.mock.calls.find(([url, init]) => String(url) === "/api/v1/generations" && init?.method === "POST");
+    const payload = JSON.parse(String((createCall?.[1]?.body as FormData).get("payload")));
+    expect(payload).toMatchObject({ width: 2160, height: 3840, quality: "high" });
     fireEvent.click(screen.getByRole("button", { name: "取消任务" }));
     await screen.findByText("已取消");
     expect(fetcher).toHaveBeenCalledWith(expect.stringContaining(resultAsset.jobId), { method: "DELETE" });

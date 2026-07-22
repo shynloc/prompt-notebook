@@ -61,13 +61,16 @@ export interface AiReferenceImage {
   mimeType: string;
 }
 
+export const IMAGE_GENERATION_QUALITIES = ["auto", "low", "medium", "high"] as const;
+export type ImageGenerationQuality = (typeof IMAGE_GENERATION_QUALITIES)[number];
+
 export interface AiImageGenerationInput extends AiConnectionInput {
   modelId: string;
   prompt: string;
   negativePrompt?: string | null;
   width: number;
   height: number;
-  quality: "standard" | "high";
+  quality: ImageGenerationQuality;
   imageCount: number;
   parameters: Record<string, string | number | boolean>;
   referenceImages: AiReferenceImage[];

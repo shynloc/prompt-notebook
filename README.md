@@ -9,6 +9,7 @@
 - 上传图片、导入图片直链、解析网页 Open Graph/Twitter Card 图片，并复用历史图床图片。
 - 按用户加密保存图床令牌和多套 OpenAI-compatible 模型配置。
 - 一键优化 Prompt、图片反推 Prompt，以及带持久化队列的专业 AI ImageHub。
+- GPT Image 2 原生尺寸：1:1、4:3、3:4、3:2、2:3、16:9、9:16，支持 1K、2K、最高 4K 与 auto/low/medium/high 质量。
 - Manifest V3 Chrome 扩展：选中文字、右键或点击图标即可编辑并保存到自己的服务器。
 - PWA、响应式布局、本地草稿、幂等重试、软删除、备份和自动更新。
 
@@ -86,7 +87,7 @@ npm run extension:zip
 
 ```bash
 npm ci
-docker compose -f docker-compose.dev.yml up -d postgres
+docker compose -f docker-compose.dev.yml up -d postgres redis
 cp .env.example .env.local
 npm run db:migrate
 npm run dev

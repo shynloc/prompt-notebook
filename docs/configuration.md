@@ -36,6 +36,12 @@ Back up this key ring separately from PostgreSQL. Losing all copies makes stored
 
 Legacy `AI_CREDENTIAL_ENCRYPTION_KEYS` and `AI_CREDENTIAL_ACTIVE_KEY_ID` remain readable for a migration window, but new deployments should only use the generic names above.
 
+## GPT Image 2
+
+When the selected image-generation model ID is `gpt-image-2` (or a dated `gpt-image-2-*` snapshot), ImageHub sends the selected canvas dimensions directly to the Images API. The included presets satisfy the provider constraints and cover common square, photography, widescreen and mobile portrait ratios from 1K through 4K. Rendering quality maps directly to `auto`, `low`, `medium` or `high`.
+
+High-resolution output above 2560×1440 is experimental at the provider. Prompt Notebook requests JPEG at 90% quality for GPT Image 2 so 4K results remain practical for the configured image host. Other OpenAI-compatible model IDs retain conservative legacy size mapping.
+
 ## User-configured endpoints
 
 Model and image-host endpoints must be public HTTPS origins on port 443, without embedded credentials, query or fragment. Local, private, link-local, metadata, reserved and redirecting targets are rejected. Requests use DNS pinning to reduce DNS-rebinding risk.

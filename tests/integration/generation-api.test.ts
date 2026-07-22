@@ -87,8 +87,8 @@ describe("generation API", () => {
     form.set("payload", JSON.stringify({
       idempotencyKey: randomUUID(),
       prompt: "A paper observatory under a red moon",
-      width: 1024,
-      height: 1024,
+      width: 3840,
+      height: 2160,
       quality: "high",
       imageCount: 1,
     }));
@@ -101,6 +101,8 @@ describe("generation API", () => {
     expect(response.status).toBe(201);
     expect(create).toHaveBeenCalledWith(owner.userId, expect.objectContaining({
       prompt: "A paper observatory under a red moon",
+      width: 3840,
+      height: 2160,
       referenceImages: [expect.any(Buffer)],
     }));
   });

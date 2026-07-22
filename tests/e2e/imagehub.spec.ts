@@ -20,7 +20,7 @@ const queued = {
   modelName: "Image Model",
   width: 1024,
   height: 1024,
-  quality: "standard",
+  quality: "auto",
   imageCount: 1,
   progress: 0,
   errorMessage: null,

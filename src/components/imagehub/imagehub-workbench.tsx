@@ -7,12 +7,20 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { PromptOptimizationDialog, type PromptOptimizationState } from "@/components/ai/prompt-optimization-dialog";
 import type { NoteImage, NoteView } from "@/components/notes/types";
 
+import {
+  imageAspectRatios,
+  imageResolutionTiers,
+  imageSizeFor,
+  type ImageAspectRatio,
+  type ImageResolutionTier,
+} from "./image-presets";
 import { activeStatuses, type GenerationAsset, type GenerationJob } from "./types";
 
-const sizes = [
-  { label: "方形", detail: "1:1", width: 1024, height: 1024 },
-  { label: "横幅", detail: "3:2", width: 1536, height: 1024 },
-  { label: "竖幅", detail: "2:3", width: 1024, height: 1536 },
+const qualityOptions = [
+  { id: "auto", label: "智能", detail: "模型决定" },
+  { id: "low", label: "草图", detail: "更快" },
+  { id: "medium", label: "标准", detail: "均衡" },
+  { id: "high", label: "精细", detail: "质量优先" },
 ] as const;
 
 function statusLabel(job: GenerationJob) {
@@ -29,7 +37,10 @@ function apiMessage(body: unknown, fallback: string) {
   if (typeof body === "object" && body !== null && "error" in body) {
     const error = (body as { error?: unknown }).error;
     if (typeof error === "object" && error !== null && "message" in error && typeof (error as { message?: unknown }).message === "string") {
-      return (error as { message: string }).message;
+      const { code, message, requestId } = error as { code?: unknown; message: string; requestId?: unknown };
+      return code === "INTERNAL_ERROR" && typeof requestId === "string"
+        ? `${message}（错误编号：${requestId}）`
+        : message;
     }
   }
   return fallback;
@@ -56,9 +67,9 @@ export function ImageHubWorkbench() {
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
   const [negativePrompt, setNegativePrompt] = useState("");
-  const [width, setWidth] = useState(1024);
-  const [height, setHeight] = useState(1024);
-  const [quality, setQuality] = useState<"standard" | "high">("standard");
+  const [aspectRatio, setAspectRatio] = useState<ImageAspectRatio>("1:1");
+  const [resolution, setResolution] = useState<ImageResolutionTier>("1k");
+  const [quality, setQuality] = useState<GenerationJob["quality"]>("auto");
   const [imageCount, setImageCount] = useState(1);
   const [references, setReferences] = useState<File[]>([]);
   const [jobs, setJobs] = useState<GenerationJob[]>([]);
@@ -68,6 +79,7 @@ export function ImageHubWorkbench() {
   const [message, setMessage] = useState("");
   const [reverse, setReverse] = useState<{ status: "loading" | "ready" | "error"; prompt?: string; model?: string; message?: string } | null>(null);
   const [optimization, setOptimization] = useState<PromptOptimizationState | null>(null);
+  const { width, height } = imageSizeFor(aspectRatio, resolution);
   const referencePreviews = useMemo(() => references.map((file) => ({ file, url: URL.createObjectURL(file) })), [references]);
   const activeJobs = useMemo(() => jobs.filter((job) => activeStatuses.includes(job.status)), [jobs]);
 
@@ -302,9 +314,13 @@ export function ImageHubWorkbench() {
           </div>
           <label className="field"><span>负面提示词</span><textarea value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} maxLength={20_000} placeholder="watermark, blurry, malformed hands…" /></label>
 
-          <fieldset className="imagehub-options"><legend>画布比例</legend><div className="imagehub-segments">{sizes.map((size) => <button aria-pressed={width === size.width && height === size.height} key={size.label} type="button" onClick={() => { setWidth(size.width); setHeight(size.height); }}><strong>{size.label}</strong><small>{size.detail}</small></button>)}</div></fieldset>
+          <fieldset className="imagehub-options"><legend>画布比例</legend><div className="imagehub-segments imagehub-segments--ratios">{imageAspectRatios.map((ratio) => <button aria-pressed={aspectRatio === ratio.id} key={ratio.id} type="button" onClick={() => setAspectRatio(ratio.id)}><strong>{ratio.label}</strong><small>{ratio.id}</small></button>)}</div></fieldset>
+          <fieldset className="imagehub-options"><legend>输出尺寸</legend><div className="imagehub-segments imagehub-segments--resolutions">{imageResolutionTiers.map((tier) => {
+            const size = imageSizeFor(aspectRatio, tier.id);
+            return <button aria-pressed={resolution === tier.id} key={tier.id} type="button" onClick={() => setResolution(tier.id)}><strong>{tier.label}</strong><small>{size.width}×{size.height} · {tier.detail}</small></button>;
+          })}</div>{resolution === "4k" ? <p className="imagehub-option-note">4K/最大画布属于 GPT Image 2 实验性高分辨率输出，生成时间和费用会明显增加。</p> : null}</fieldset>
           <div className="imagehub-settings-row">
-            <fieldset><legend>质量</legend><div className="imagehub-choice"><button aria-pressed={quality === "standard"} type="button" onClick={() => setQuality("standard")}>标准</button><button aria-pressed={quality === "high"} type="button" onClick={() => setQuality("high")}>高清</button></div></fieldset>
+            <fieldset><legend>渲染质量</legend><div className="imagehub-choice">{qualityOptions.map((option) => <button aria-pressed={quality === option.id} key={option.id} type="button" onClick={() => setQuality(option.id)}><strong>{option.label}</strong><small>{option.detail}</small></button>)}</div></fieldset>
             <label><span>张数</span><select value={imageCount} onChange={(event) => setImageCount(Number(event.target.value))}>{[1, 2, 3, 4].map((count) => <option key={count} value={count}>{count} 张</option>)}</select></label>
           </div>
 

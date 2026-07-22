@@ -11,9 +11,11 @@ const requiredFiles = [
 ];
 const failures = requiredFiles.filter((file) => !existsSync(file)).map((file) => `missing ${file}`);
 const manifest = JSON.parse(readFileSync("apps/extension/public/manifest.json", "utf8"));
+const productionCompose = readFileSync("deploy/compose.production.yml", "utf8");
 if (manifest.manifest_version !== 3) failures.push("extension must use Manifest V3");
 if (manifest.host_permissions?.some((permission) => permission === "<all_urls>" || permission.includes("*://*"))) failures.push("extension has an unconditional broad host permission");
 if (!manifest.optional_host_permissions?.includes("https://*/*")) failures.push("extension custom-server permission is missing");
+if ((productionCompose.match(/REDIS_URL:/g) ?? []).length < 3) failures.push("production web, migrate, and generation worker must all receive REDIS_URL");
 
 const production = process.argv.includes("--production");
 if (production) {

@@ -35,8 +35,43 @@ describe("OpenAI-compatible provider adapter", () => {
     expect(mapOpenAiImageSize("dall-e-3", 1600, 900)).toBe("1792x1024");
     expect(mapOpenAiImageSize("gpt-image-1", 900, 1600)).toBe("1024x1536");
     expect(mapOpenAiImageSize("gpt-image-1", 1024, 1024)).toBe("1024x1024");
+    expect(mapOpenAiImageSize("gpt-image-2", 3840, 2160)).toBe("3840x2160");
+    expect(mapOpenAiImageSize("gpt-image-2-2026-04-21", 2160, 3840)).toBe("2160x3840");
     expect(mapOpenAiImageQuality("dall-e-3", "high")).toBe("hd");
-    expect(mapOpenAiImageQuality("gpt-image-1", "standard")).toBe("medium");
+    expect(mapOpenAiImageQuality("gpt-image-2", "auto")).toBe("auto");
+    expect(mapOpenAiImageQuality("gpt-image-1", "medium")).toBe("medium");
+    expect(() => mapOpenAiImageSize("gpt-image-2", 3840, 3840)).toThrow(/8,294,400/);
+  });
+
+  it("sends the native GPT Image 2 4K contract without the legacy response_format", async () => {
+    const image = Buffer.from("ffd8ffe000104a464946", "hex");
+    const fetcher = vi.fn(async (requestInput: RequestInfo | URL, requestInit?: RequestInit) => {
+      void requestInput;
+      void requestInit;
+      return Response.json({ data: [{ b64_json: image.toString("base64") }] });
+    });
+    const adapter = new OpenAiCompatibleAdapter({ fetcher: fetcher as typeof fetch, resolver });
+    await adapter.generateImages({
+      baseUrl: "https://api.example.com/v1",
+      apiKey: "sk-private",
+      modelId: "gpt-image-2",
+      prompt: "A cinematic valley",
+      width: 3840,
+      height: 2160,
+      quality: "high",
+      imageCount: 1,
+      parameters: {},
+      referenceImages: [],
+    });
+    const body = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+    expect(body).toMatchObject({
+      model: "gpt-image-2",
+      size: "3840x2160",
+      quality: "high",
+      output_format: "jpeg",
+      output_compression: 90,
+    });
+    expect(body).not.toHaveProperty("response_format");
   });
 
   it("generates inline images without persisting API credentials in the result", async () => {
@@ -86,7 +121,7 @@ describe("OpenAI-compatible provider adapter", () => {
       prompt: "Restyle this",
       width: 1024,
       height: 1024,
-      quality: "standard",
+      quality: "medium",
       imageCount: 1,
       parameters: {},
       referenceImages: [{ data: Buffer.from("reference"), filename: "source.png", mimeType: "image/png" }],

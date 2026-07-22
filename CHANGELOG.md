@@ -4,6 +4,19 @@ All notable changes use the Keep a Changelog structure. Versions follow Semantic
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-22
+
+### Added
+
+- Added seven common ImageHub aspect ratios, including 16:9 and 9:16.
+- Added 1K, 2K and GPT Image 2 4K output presets plus auto, low, medium and high rendering quality.
+
+### Fixed
+
+- Passed Redis configuration to the production web container so generation jobs can enter the durable queue.
+- Sent native GPT Image 2 sizes and output options instead of legacy size and response-format parameters.
+- Added request IDs and actionable server diagnostics for unexpected API failures.
+
 ## [1.0.1] - 2026-07-22
 
 - Fixed the production Compose build context for repository-root deployments.

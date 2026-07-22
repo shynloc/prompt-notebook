@@ -16,6 +16,7 @@ import {
   type AiReversePromptInput,
   type AiReversePromptResult,
   type AiProviderAdapter,
+  type ImageGenerationQuality,
 } from "../types";
 
 const DEFAULT_TIMEOUT_MS = 8_000;
@@ -102,16 +103,42 @@ function boundedOptimizationParameters(parameters: Record<string, string | numbe
   return bounded;
 }
 
+function isGptImageModel(modelId: string) {
+  return modelId.toLowerCase().startsWith("gpt-image-");
+}
+
+function isGptImage2Model(modelId: string) {
+  return modelId.toLowerCase() === "gpt-image-2" || modelId.toLowerCase().startsWith("gpt-image-2-");
+}
+
+function assertGptImage2Size(width: number, height: number) {
+  const longEdge = Math.max(width, height);
+  const shortEdge = Math.min(width, height);
+  const pixels = width * height;
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width % 16 !== 0 || height % 16 !== 0 ||
+    longEdge > 3_840 || longEdge / shortEdge > 3 || pixels < 655_360 || pixels > 8_294_400) {
+    throw new AiProviderError(
+      "AI_PROVIDER_RESPONSE_INVALID",
+      "GPT Image 2 requires multiples-of-16 dimensions, a maximum 3840px edge, a ratio up to 3:1, and 655,360–8,294,400 total pixels",
+      false,
+    );
+  }
+}
+
 export function mapOpenAiImageSize(modelId: string, width: number, height: number) {
+  if (isGptImage2Model(modelId)) {
+    assertGptImage2Size(width, height);
+    return `${width}x${height}`;
+  }
   const dallE3 = modelId.toLowerCase().includes("dall-e-3");
   if (width === height) return "1024x1024";
   if (dallE3) return width > height ? "1792x1024" : "1024x1792";
   return width > height ? "1536x1024" : "1024x1536";
 }
 
-export function mapOpenAiImageQuality(modelId: string, quality: "standard" | "high") {
-  if (modelId.toLowerCase().includes("dall-e-3")) return quality === "high" ? "hd" : "standard";
-  return quality === "high" ? "high" : "medium";
+export function mapOpenAiImageQuality(modelId: string, quality: ImageGenerationQuality) {
+  if (modelId.toLowerCase().includes("dall-e")) return quality === "high" ? "hd" : "standard";
+  return quality;
 }
 
 function generationPrompt(prompt: string, negativePrompt?: string | null) {
@@ -132,7 +159,11 @@ function multipartGenerationBody(input: AiImageGenerationInput, size: string, qu
   field("size", size);
   field("quality", quality);
   field("n", String(input.imageCount));
-  field("response_format", "b64_json");
+  if (!isGptImageModel(input.modelId)) field("response_format", "b64_json");
+  if (isGptImage2Model(input.modelId)) {
+    field("output_format", "jpeg");
+    field("output_compression", "90");
+  }
   for (const [index, image] of input.referenceImages.entries()) {
     chunks.push(Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="image[]"; filename="reference-${index}"\r\nContent-Type: ${image.mimeType}\r\n\r\n`,
@@ -204,7 +235,8 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
         size,
         quality,
         n: input.imageCount,
-        response_format: "b64_json",
+        ...(!isGptImageModel(input.modelId) ? { response_format: "b64_json" } : {}),
+        ...(isGptImage2Model(input.modelId) ? { output_format: "jpeg", output_compression: 90 } : {}),
       }),
       redirect: "manual",
       signal: requestSignal(Math.max(this.timeoutMs, 120_000), input.signal),

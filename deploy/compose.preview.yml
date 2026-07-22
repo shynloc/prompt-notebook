@@ -15,11 +15,24 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks: [prompt_notebook]
 
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory-policy", "noeviction"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes: [redis_data:/data]
+    networks: [prompt_notebook]
+
   migrate:
     image: prompt-notebook:${IMAGE_TAG:-preview}
     restart: "no"
     environment:
       DATABASE_URL: postgres://prompt_notebook:${POSTGRES_PASSWORD}@postgres:5432/prompt_notebook
+      REDIS_URL: redis://redis:6379/0
     command: ["node", "scripts/migrate.mjs"]
     depends_on:
       postgres:
@@ -33,6 +46,7 @@ services:
       APP_URL: ${APP_URL:?APP_URL is required}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
       DATABASE_URL: postgres://prompt_notebook:${POSTGRES_PASSWORD}@postgres:5432/prompt_notebook
+      REDIS_URL: redis://redis:6379/0
       SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:?SMTP_USER is required}
@@ -51,6 +65,25 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks: [prompt_notebook]
+
+  generation-worker:
+    image: prompt-notebook:${IMAGE_TAG:-preview}
+    restart: unless-stopped
+    command: ["node", "dist/generation-worker.mjs"]
+    environment:
+      DATABASE_URL: postgres://prompt_notebook:${POSTGRES_PASSWORD}@postgres:5432/prompt_notebook
+      REDIS_URL: redis://redis:6379/0
+      CREDENTIAL_ENCRYPTION_KEYS: ${CREDENTIAL_ENCRYPTION_KEYS:?CREDENTIAL_ENCRYPTION_KEYS is required}
+      CREDENTIAL_ACTIVE_KEY_ID: ${CREDENTIAL_ACTIVE_KEY_ID:?CREDENTIAL_ACTIVE_KEY_ID is required}
+      GENERATION_WORKER_CONCURRENCY: 1
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     networks: [prompt_notebook]
 
 networks:
@@ -58,3 +91,4 @@ networks:
 
 volumes:
   postgres_data:
+  redis_data:

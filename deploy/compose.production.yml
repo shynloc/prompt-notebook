@@ -48,6 +48,7 @@ services:
       APP_URL: ${APP_URL:?APP_URL is required}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
       DATABASE_URL: postgres://prompt_notebook:${POSTGRES_PASSWORD}@postgres:5432/prompt_notebook
+      REDIS_URL: redis://redis:6379/0
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}

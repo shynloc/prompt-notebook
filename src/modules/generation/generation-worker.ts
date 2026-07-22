@@ -9,7 +9,12 @@ import {
 } from "@/db/schema";
 import { decryptCredential } from "@/modules/ai/credential-crypto";
 import { AiProviderRegistry } from "@/modules/ai/provider-registry";
-import { AiProviderError, type AiProviderType, type AiReferenceImage } from "@/modules/ai/types";
+import {
+  AiProviderError,
+  type AiProviderType,
+  type AiReferenceImage,
+  type ImageGenerationQuality,
+} from "@/modules/ai/types";
 
 import {
   PicbedGenerationMediaStore,
@@ -136,7 +141,7 @@ export class GenerationWorkerProcessor {
         negativePrompt: job.negativePrompt,
         width: job.width,
         height: job.height,
-        quality: job.quality as "standard" | "high",
+        quality: job.quality as ImageGenerationQuality,
         imageCount: job.imageCount,
         parameters: job.parameters,
         referenceImages: references,

@@ -299,7 +299,7 @@ export class GenerationService {
         eq(aiModelPreferences.purpose, "image_generation"),
       )).where(and(...conditions)).limit(1);
     const selected = rows[0];
-    if (!selected) throw new ApiError(422, "GENERATION_MODEL_NOT_CONFIGURED", "请先指定可用的图片生成模型");
+    if (!selected) throw new ApiError(422, "GENERATION_MODEL_NOT_CONFIGURED", "请先在 AI 助手设置中添加模型，并将其指定为图片生成模型");
     if (!selected.capabilities.includes("image_generation")) {
       throw new ApiError(422, "AI_MODEL_CAPABILITY_MISMATCH", "当前模型不支持图片生成");
     }

@@ -12,7 +12,7 @@ export function dataResponse(data: unknown, init?: ResponseInit, meta?: unknown)
 }
 
 export function errorResponse(error: unknown, requestId = randomUUID()) {
-  const normalized = normalizeApiError(error);
+  const normalized = normalizeApiError(error, requestId);
   return Response.json(
     {
       error: {
