@@ -1,0 +1,107 @@
+.auth-page {
+  display: grid;
+  min-height: 100vh;
+  padding: 24px;
+  place-items: center;
+}
+
+.extension-connect-card { max-width: 34rem; }
+.extension-permissions { margin: 1.25rem 0; padding: 1rem 1rem 1rem 2rem; border: 1px solid var(--color-border); border-radius: 1rem; background: color-mix(in srgb, var(--color-paper) 88%, var(--color-stamp)); line-height: 1.7; }
+.extension-connect-actions { display: grid; gap: .65rem; }
+.extension-connect-actions button { min-height: 2.9rem; }
+
+.auth-card {
+  width: min(100%, 440px);
+  padding: clamp(24px, 6vw, 40px);
+  border: 1px solid color-mix(in srgb, var(--color-ink) 18%, transparent);
+  border-radius: var(--radius-lg);
+  background: var(--color-paper);
+  box-shadow: var(--shadow-paper);
+}
+
+.auth-brand,
+.auth-footer a {
+  color: var(--color-stamp);
+  font-weight: 700;
+  text-underline-offset: 3px;
+}
+
+.auth-eyebrow {
+  margin: 28px 0 6px;
+  color: var(--color-ink-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.auth-card h1 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: clamp(2rem, 8vw, 3rem);
+}
+
+.auth-description {
+  margin: 10px 0 28px;
+  color: var(--color-ink-muted);
+  line-height: 1.6;
+}
+
+.auth-form {
+  display: grid;
+  gap: 18px;
+}
+
+.auth-field {
+  display: grid;
+  gap: 7px;
+  font-weight: 700;
+}
+
+.auth-field input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 28%, transparent);
+  border-radius: var(--radius-md);
+  background: white;
+  color: var(--color-ink);
+}
+
+.auth-field input:focus-visible,
+.auth-submit:focus-visible,
+.auth-brand:focus-visible,
+.auth-footer a:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+.auth-submit {
+  min-height: 48px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-ink);
+  color: var(--color-paper);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.auth-submit:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.auth-message {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-stamp) 10%, transparent);
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+
+.auth-footer {
+  margin: 24px 0 0;
+  color: var(--color-ink-muted);
+  text-align: center;
+}

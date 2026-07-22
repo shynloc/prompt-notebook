@@ -1,0 +1,13 @@
+[Unit]
+Description=Update Prompt Notebook from the verified main branch
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/prompt-notebook/current
+Environment=EXPECTED_ROOT=/opt/prompt-notebook/current
+Environment=ENV_FILE=/opt/prompt-notebook/.env
+Environment=BACKUP_DIR=/opt/prompt-notebook/backups
+ExecStart=/bin/sh scripts/auto-update.sh

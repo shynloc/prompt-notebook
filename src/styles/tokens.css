@@ -1,0 +1,42 @@
+:root {
+  color-scheme: light;
+  --color-board: #d6cbbd;
+  --color-board-deep: #c8baaa;
+  --color-paper: #fbf7ef;
+  --color-paper-strong: #fffdf8;
+  --color-ink: #191816;
+  --color-ink-muted: #625e55;
+  --color-stamp: #bd302c;
+  --color-stamp-dark: #8f211f;
+  --color-label: #252320;
+  --color-label-text: #fffdf8;
+  --color-border: #292722;
+  --color-focus: #1267a5;
+  --color-success: #287052;
+  --color-warning: #9a6417;
+  --color-danger: #a42622;
+  --shadow-paper: 0 14px 35px rgb(48 41 33 / 14%);
+  --shadow-hard: 3px 4px 0 rgb(25 24 22 / 88%);
+  --radius-sm: 4px;
+  --radius-md: 10px;
+  --radius-lg: 18px;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-sans: Inter, "Noto Sans SC", system-ui, -apple-system, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --motion-fast: 140ms;
+  --motion-normal: 180ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-normal: 0ms;
+  }
+}

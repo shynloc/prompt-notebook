@@ -1,0 +1,17 @@
+.storage-settings-layout { align-items: start; display: grid; gap: var(--space-6); }
+.storage-settings-card { background: var(--color-paper); border: 2px solid var(--color-border); box-shadow: var(--shadow-hard); padding: clamp(1rem, 3vw, 1.5rem); }
+.storage-settings-card h3 { font-family: var(--font-serif); font-size: 1.5rem; margin: var(--space-2) 0 0; }
+.storage-settings-form { display: grid; gap: var(--space-4); }
+.storage-settings-form > label:not(.storage-settings-toggle) { display: grid; font-size: .82rem; font-weight: 800; gap: var(--space-2); }
+.storage-settings-form input[type="url"], .storage-settings-form input[type="password"] { background: var(--color-paper-strong); border: 1.5px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-ink); min-height: 2.75rem; padding: .65rem .75rem; width: 100%; }
+.storage-settings-toggle, .storage-settings-actions { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.storage-settings-toggle { font-size: .82rem; font-weight: 800; }
+.storage-settings-actions button { background: var(--color-paper-strong); border: 1px solid var(--color-border); color: var(--color-ink); cursor: pointer; font-size: .8rem; font-weight: 800; min-height: 2.65rem; padding: .6rem .8rem; }
+.storage-settings-actions .primary-action { background: var(--color-accent); }
+.storage-settings-actions .danger-text { color: var(--color-danger); }
+.storage-settings-help p { color: var(--color-ink-muted); line-height: 1.65; }
+.storage-settings-help code { background: var(--color-paper-strong); border: 1px solid rgb(25 24 22 / 16%); padding: .08rem .25rem; }
+.storage-test-result { border-left: 4px solid var(--color-danger); display: grid; gap: var(--space-2); margin-top: var(--space-5); padding: var(--space-3); }
+.storage-test-result--success { border-color: var(--color-success); }
+.storage-test-result span, .storage-test-result small { color: var(--color-ink-muted); }
+@media (min-width: 68rem) { .storage-settings-layout { grid-template-columns: minmax(0, 1.25fr) minmax(18rem, .75fr); } }

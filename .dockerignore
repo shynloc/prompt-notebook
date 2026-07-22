@@ -1,0 +1,12 @@
+.git
+.github
+.next
+node_modules
+outputs
+playwright-report
+test-results
+work
+.env
+.env.*
+docker-compose.dev.yml
+npm-debug.log*

@@ -1,0 +1,49 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+@import "../components/app-shell/app-shell.css";
+@import "../components/auth/auth-form.css";
+@import "../components/notes/note-preview.css";
+@import "../components/extension/extension-marketing.css";
+@import "../components/ai/ai-settings.css";
+@import "../components/ai/prompt-optimization-dialog.css";
+@import "../components/imagehub/imagehub.css";
+@import "../components/media/storage-settings.css";
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background-color: var(--color-board);
+  background-image:
+    radial-gradient(circle at 20% 12%, rgb(255 255 255 / 16%) 0 1px, transparent 2px),
+    radial-gradient(circle at 76% 80%, rgb(70 54 37 / 9%) 0 1px, transparent 2px);
+  background-size: 24px 24px, 31px 31px;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

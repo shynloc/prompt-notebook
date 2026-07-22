@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: prompt_notebook_test
+      POSTGRES_USER: prompt_notebook
+      POSTGRES_PASSWORD: prompt_notebook
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prompt_notebook -d prompt_notebook_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - prompt_notebook_postgres_dev:/var/lib/postgresql/data
+
+volumes:
+  prompt_notebook_postgres_dev:

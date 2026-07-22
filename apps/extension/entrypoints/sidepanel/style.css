@@ -1,0 +1,68 @@
+:root { color: #292722; background: #b8a98f; font-family: "Avenir Next", "Noto Sans SC", sans-serif; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 290px; }
+button, input, textarea { font: inherit; }
+button { cursor: pointer; }
+.panel-shell { min-height: 100vh; background-color: #c7b89c; background-image: radial-gradient(circle at 20% 15%, rgb(255 255 255 / 22%) 0 1px, transparent 2px), radial-gradient(circle at 80% 70%, rgb(70 54 37 / 12%) 0 1px, transparent 2px); background-size: 21px 21px, 29px 29px; }
+.panel-header { align-items: center; background: #292722; color: #fff9ea; display: flex; justify-content: space-between; min-height: 64px; padding: 10px 12px; position: sticky; top: 0; z-index: 5; }
+.panel-header > div { align-items: center; display: flex; gap: 9px; }
+.panel-header strong, .panel-header small { display: block; }
+.panel-header strong { font-family: Georgia, "Noto Serif SC", serif; font-size: 15px; }
+.panel-header small { color: #c9bdab; font-size: 10px; margin-top: 2px; }
+.brand-mark { align-items: center; background: #d65346; border: 1px solid #fff9ea; display: flex; font: 900 12px/1 ui-monospace, monospace; height: 34px; justify-content: center; transform: rotate(-3deg); width: 34px; }
+.panel-header button { background: transparent; border: 1px solid #776f63; color: #fff9ea; font-size: 11px; padding: 7px 8px; }
+.capture-form { display: grid; gap: 18px; padding: 18px 14px 28px; }
+.capture-heading { align-items: end; display: flex; justify-content: space-between; }
+.eyebrow { background: #292722; color: #fff9ea; display: inline-flex; font: 800 9px/1 ui-monospace, monospace; letter-spacing: .12em; padding: 5px 6px; }
+h1 { font-family: Georgia, "Noto Serif SC", serif; font-size: 34px; font-weight: 500; letter-spacing: -.035em; line-height: .96; margin: 8px 0 0; }
+.connection-dot { color: #315e48; font: 800 10px/1 ui-monospace, monospace; }
+.connection-dot::before { background: #3e805d; border-radius: 50%; content: ""; display: inline-block; height: 7px; margin-right: 5px; width: 7px; }
+.field { display: grid; gap: 6px; }
+.field > span, .image-section > div > span { font-size: 12px; font-weight: 850; }
+.field input, .field textarea { background: #fffaf0; border: 1px solid #514c43; border-radius: 0; color: #292722; outline: none; padding: 10px; width: 100%; }
+.field input:focus, .field textarea:focus { box-shadow: 3px 3px 0 #d65346; }
+.field textarea { line-height: 1.55; min-height: 190px; resize: vertical; }
+.tag-editor { align-items: center; background: #fffaf0; border: 1px solid #514c43; display: flex; flex-wrap: wrap; gap: 5px; min-height: 45px; padding: 6px; }
+.tag-editor button { background: #ece0ce; border: 1px solid #777064; font: 750 10px/1 ui-monospace, monospace; padding: 6px; }
+.tag-editor input { background: transparent; border: 0; flex: 1; min-width: 110px; outline: 0; padding: 5px; }
+.image-section { border-top: 2px solid #514c43; display: grid; gap: 10px; padding-top: 16px; }
+.image-section > div { align-items: end; display: flex; justify-content: space-between; }
+.image-section small { color: #665f54; font-size: 10px; }
+.candidate-grid { display: grid; gap: 7px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.candidate { aspect-ratio: 1; background: #292722; border: 2px solid #514c43; overflow: hidden; position: relative; }
+.candidate input { opacity: 0; position: absolute; }
+.candidate img { height: 100%; object-fit: cover; width: 100%; }
+.candidate span { background: #fffaf0; bottom: 5px; font: 800 9px/1 ui-monospace, monospace; left: 5px; padding: 5px; position: absolute; }
+.candidate--selected { border-color: #d65346; box-shadow: 3px 3px 0 #d65346; }
+.candidate--selected span { background: #d65346; color: white; }
+.empty-images { border: 1px dashed #777064; color: #665f54; font-size: 11px; margin: 0; padding: 14px; text-align: center; }
+.source-section { border: 1px solid #777064; padding: 10px; }
+.source-section summary { cursor: pointer; font-size: 12px; font-weight: 850; }
+.source-section .field { margin-top: 10px; }
+.panel-message { background: #fff2ce; border-left: 4px solid #be7a22; font-size: 11px; line-height: 1.45; margin: 0; padding: 10px; }
+.panel-message--success { background: #e3f0e7; border-color: #3e805d; }
+.save-bar { display: grid; gap: 7px; }
+.save-bar button { min-height: 45px; }
+.save-button, .connect-panel > button { background: #292722; border: 0; box-shadow: 4px 4px 0 #d65346; color: #fff9ea; font-weight: 850; }
+.save-button:disabled { opacity: .65; }
+.save-bar button:not(.save-button) { background: #fffaf0; border: 1px solid #514c43; font-weight: 800; }
+.capture-form footer { align-items: center; border-top: 1px solid #777064; display: flex; justify-content: space-between; padding-top: 12px; }
+.capture-form footer button { background: transparent; border: 0; color: #9a3c34; font-size: 10px; padding: 0; }
+.capture-form footer span { color: #665f54; font: 700 9px/1 ui-monospace, monospace; }
+.recent-section, .server-settings { border: 1px solid #777064; padding: 10px; }
+.recent-section summary, .server-settings summary { cursor: pointer; font-size: 12px; font-weight: 850; }
+.recent-section ol { display: grid; gap: 7px; list-style: none; margin: 10px 0 0; padding: 0; }
+.recent-section li { display: grid; gap: 2px; }
+.recent-section button { background: transparent; border: 0; color: #292722; padding: 0; text-align: left; }
+.recent-section small, .server-settings small { color: #665f54; font-size: 9px; }
+.server-settings .field { margin: 10px 0; }
+.server-settings > button { background: #fffaf0; border: 1px solid #514c43; min-height: 38px; width: 100%; }
+.connect-panel { display: grid; gap: 18px; padding: 44px 20px; }
+.connect-panel h1 { font-size: clamp(36px, 12vw, 54px); }
+.connect-panel p { color: #514c43; line-height: 1.65; margin: 0; }
+.connect-panel > button { min-height: 50px; }
+.panel-loading { align-items: center; display: flex; flex-direction: column; gap: 12px; justify-content: center; min-height: 100vh; }
+.ink-spinner { animation: turn 1s steps(8) infinite; border: 3px dotted #292722; border-radius: 50%; height: 28px; width: 28px; }
+@keyframes turn { to { transform: rotate(1turn); } }
+@media (min-width: 430px) { .candidate-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .capture-form { padding-inline: 20px; } }
+@media (prefers-reduced-motion: reduce) { .ink-spinner { animation: none; } }

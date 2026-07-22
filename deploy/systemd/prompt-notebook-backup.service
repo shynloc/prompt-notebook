@@ -1,0 +1,14 @@
+[Unit]
+Description=Prompt Notebook verified PostgreSQL backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/prompt-notebook/current
+Environment=COMPOSE_FILE=deploy/compose.production.yml
+Environment=ENV_FILE=/opt/prompt-notebook/.env
+Environment=BACKUP_DIR=/opt/prompt-notebook/backups
+Environment=RETENTION_DAYS=14
+ExecStart=/bin/sh scripts/backup-postgres.sh

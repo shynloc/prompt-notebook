@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: prompt_notebook_test
+          POSTGRES_USER: prompt_notebook
+          POSTGRES_PASSWORD: prompt_notebook
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prompt_notebook -d prompt_notebook_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_URL: http://127.0.0.1:3000
+      BETTER_AUTH_SECRET: ci-only-secret-that-is-long-enough-for-tests
+      DATABASE_URL: postgres://prompt_notebook:prompt_notebook@127.0.0.1:5432/prompt_notebook_test
+      CREDENTIAL_ENCRYPTION_KEYS: ci:0000000000000000000000000000000000000000000000000000000000000000
+      CREDENTIAL_ACTIVE_KEY_ID: ci
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate
+      - run: npx playwright install --with-deps chromium
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test -- --run
+      - run: npm run extension:test
+      - run: npm run build
+      - run: npm run extension:build
+      - run: npm run release:check
+      - run: npm run test:e2e
+      - run: npm audit --omit=dev
