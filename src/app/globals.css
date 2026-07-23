@@ -8,6 +8,8 @@
 @import "../components/ai/prompt-optimization-dialog.css";
 @import "../components/imagehub/imagehub.css";
 @import "../components/media/storage-settings.css";
+@import "../components/settings/settings.css";
+@import "../components/terms/term-analysis.css";
 
 * {
   box-sizing: border-box;

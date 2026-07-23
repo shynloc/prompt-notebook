@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth/server";
 import { GET as listNotes, POST as createNote } from "@/app/api/v1/notes/route";
 import { GET as listTags } from "@/app/api/v1/tags/route";
 import { GET as listTerms, POST as createTerm } from "@/app/api/v1/terms/route";
+import { POST as bulkCreateTerms } from "@/app/api/v1/terms/bulk/route";
 import { POST as uploadImage } from "@/app/api/v1/uploads/route";
 
 function request(url: string, options: { body?: unknown; cookie?: string } = {}) {
@@ -69,5 +70,35 @@ describe("visual notebook features", () => {
     expect(ownerBody.data.builtIn.length).toBeGreaterThanOrEqual(120);
     expect(ownerBody.data.custom).toHaveLength(1);
     expect(otherBody.data.custom).toHaveLength(0);
+  });
+
+  it("batch-saves reviewed terms while skipping built-in, stored and request duplicates", async () => {
+    const owner = await session("term-bulk-owner");
+    const uniqueEnvironment = `prismatic test chamber ${randomUUID()}`;
+    const terms = [
+      { category: "光线", label: "体积光", value: "volumetric lighting" },
+      { category: "人物", label: "银发人物", value: "silver-haired subject" },
+      { category: "人物", label: "银发主体", value: "silver-haired subject" },
+      { category: "环境", label: "测试棱镜空间", value: uniqueEnvironment },
+    ];
+    const created = await bulkCreateTerms(request("http://localhost:3000/api/v1/terms/bulk", {
+      cookie: owner,
+      body: { terms },
+    }));
+    expect(created.status).toBe(201);
+    const body = await created.json();
+    expect(body.data.created.map((term: { value: string }) => term.value).sort()).toEqual([
+      "silver-haired subject",
+      uniqueEnvironment,
+    ].sort());
+    expect(body.data.skipped).toHaveLength(2);
+    expect(body.data.skipped.every((item: { reason: string }) => item.reason === "duplicate")).toBe(true);
+
+    const repeated = await bulkCreateTerms(request("http://localhost:3000/api/v1/terms/bulk", {
+      cookie: owner,
+      body: { terms: terms.slice(1, 2) },
+    }));
+    expect(repeated.status).toBe(200);
+    expect((await repeated.json()).data).toMatchObject({ created: [], skipped: [{ reason: "duplicate" }] });
   });
 });

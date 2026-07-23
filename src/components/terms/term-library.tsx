@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 
 interface Term { id: string; category: string; label: string; value: string; builtIn: boolean }
 
-export function TermLibrary({ onInsert }: { onInsert?: (value: string) => void }) {
+export function TermLibrary({ onInsert, refreshKey = 0 }: { onInsert?: (value: string) => void; refreshKey?: number }) {
   const [terms, setTerms] = useState<Term[]>([]);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("全部");
@@ -19,7 +19,7 @@ export function TermLibrary({ onInsert }: { onInsert?: (value: string) => void }
     setTerms([...body.data.builtIn, ...body.data.custom]);
     setState("ready");
   }, []);
-  useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load]);
+  useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load, refreshKey]);
 
   const categories = useMemo(() => ["全部", ...Array.from(new Set(terms.map((term) => term.category)))], [terms]);
   const visible = useMemo(() => terms.filter((term) => {

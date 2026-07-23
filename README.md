@@ -9,7 +9,9 @@
 - 日期短链接只读分享、明确的创建反馈，以及可续期和关闭的有效分享管理页。
 - 上传图片、导入图片直链、解析网页 Open Graph/Twitter Card 图片，并复用历史图床图片。
 - 按用户加密保存图床令牌和多套 OpenAI-compatible 模型配置。
+- 设置集中管理 AI 模型与图床连接，桌面侧栏保持简洁，分类页仍可独立深链访问。
 - 一键优化 Prompt、图片反推 Prompt，以及带持久化队列、直接文件下载、保存防重和可删除生成历史的专业 AI ImageHub。
+- 提示词百科支持 AI 分析完整 Prompt，按类别提炼原文词组，经人工选择、编辑和去重后批量收录。
 - AI 请求超时可通过部署环境配置；图片超时不会盲目重试，供应商错误与请求 ID 会在脱敏后展示。
 - GPT Image 2 原生尺寸：1:1、4:3、3:4、3:2、2:3、16:9、9:16，支持 1K、2K、最高 4K 与 auto/low/medium/high 质量。
 - Manifest V3 Chrome 扩展：选中文字、右键或点击图标即可编辑并保存到自己的服务器。
@@ -42,9 +44,9 @@ node scripts/smoke-production.mjs https://prompts.example.com
 ## 首次使用
 
 1. 打开部署后的站点，注册并登录。
-2. 进入“图床设置”，填写兼容图床上传端点和 Token，保存并测试。
-3. 进入“AI 助手”，添加模型 API Base URL、API Key、Model ID，并分别指定提示词优化、生图和反推模型。
-4. 新建提示词，或进入 AI ImageHub 测试生成。
+2. 进入“设置 → 图床”，填写兼容图床上传端点和 Token，保存并测试。
+3. 进入“设置 → AI 模型”，添加模型 API Base URL、API Key、Model ID，并分别指定提示词优化、词库分析、生图和反推模型；词库分析也可以继承提示词优化模型。
+4. 新建提示词、进入 AI ImageHub 测试生成，或在提示词百科中分析并收录优秀 Prompt 片段。
 5. 安装 Chrome 扩展并连接自己的服务器。
 
 图床兼容接口接收 `multipart/form-data` 的 `file`、`path` 字段及 `X-Auth-Token` 请求头；JSON 响应可返回 `url`、`publicUrl`、`href`、`location`、`key` 或 `path`。

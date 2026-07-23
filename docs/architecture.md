@@ -151,6 +151,8 @@ erDiagram
 | GET/PATCH/DELETE | `/notes/:id` | 详情、修改、移入回收站 |
 | POST | `/notes/:id/restore` | 从回收站恢复 |
 | GET/POST | `/terms` | 查询、新建自定义词条 |
+| POST | `/terms/analyze` | 使用用户文本模型生成经校验的词条候选 |
+| POST | `/terms/bulk` | 去重后批量保存用户确认的候选词条 |
 | PATCH/DELETE | `/terms/:id` | 修改、删除自定义词条 |
 | POST | `/uploads` | MVP 服务端代理上传 |
 | POST | `/uploads/presign` | 第二阶段签名直传 |

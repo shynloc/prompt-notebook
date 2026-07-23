@@ -23,7 +23,7 @@ import {
 } from "./credential-crypto";
 import { parseOutboundBaseUrl } from "./outbound-url-policy";
 import { AiProviderRegistry } from "./provider-registry";
-import { AiProviderError, type AiCapability, type AiProviderType } from "./types";
+import { AI_PURPOSES, AiProviderError, capabilityForPurpose, type AiProviderType } from "./types";
 
 const MAX_CONFIGURATIONS_PER_USER = 50;
 const MIN_CONNECTION_TEST_INTERVAL_MS = 10_000;
@@ -183,10 +183,11 @@ export class AiConfigurationService {
           eq(aiModelPreferences.modelProfileId, currentModel.id),
         ));
       } else if (input.capabilities) {
+        const allowedPurposes = AI_PURPOSES.filter((purpose) => input.capabilities!.includes(capabilityForPurpose(purpose)));
         await tx.delete(aiModelPreferences).where(and(
           eq(aiModelPreferences.userId, userId),
           eq(aiModelPreferences.modelProfileId, currentModel.id),
-          notInArray(aiModelPreferences.purpose, input.capabilities),
+          notInArray(aiModelPreferences.purpose, allowedPurposes),
         ));
       }
     });
@@ -291,7 +292,7 @@ export class AiConfigurationService {
     if (!profile.modelEnabled || !profile.connectionEnabled) {
       throw new ApiError(422, "AI_MODEL_PROFILE_DISABLED", "The selected AI model is disabled");
     }
-    if (!profile.capabilities.includes(input.purpose as AiCapability)) {
+    if (!profile.capabilities.includes(capabilityForPurpose(input.purpose))) {
       throw new ApiError(422, "AI_MODEL_CAPABILITY_MISMATCH", "The selected AI model does not support this purpose");
     }
     await db.insert(aiModelPreferences).values({

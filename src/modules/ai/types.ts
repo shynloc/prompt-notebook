@@ -8,8 +8,17 @@ export const AI_CAPABILITIES = [
 ] as const;
 export type AiCapability = (typeof AI_CAPABILITIES)[number];
 
-export const AI_PURPOSES = AI_CAPABILITIES;
-export type AiPurpose = AiCapability;
+export const AI_PURPOSES = [
+  "prompt_optimization",
+  "term_analysis",
+  "image_generation",
+  "reverse_prompt",
+] as const;
+export type AiPurpose = (typeof AI_PURPOSES)[number];
+
+export function capabilityForPurpose(purpose: AiPurpose): AiCapability {
+  return purpose === "term_analysis" ? "prompt_optimization" : purpose;
+}
 
 export const AI_PROVIDER_ERROR_CODES = [
   "AI_PROVIDER_AUTH_FAILED",

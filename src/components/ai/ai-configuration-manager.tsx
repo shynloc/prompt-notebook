@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 type Capability = "prompt_optimization" | "image_generation" | "reverse_prompt";
-type Purpose = Capability;
+type Purpose = Capability | "term_analysis";
 
 interface AiConfiguration {
   id: string;
@@ -33,9 +33,17 @@ const capabilityOptions: Array<{ id: Capability; label: string }> = [
 
 const purposeLabels: Record<Purpose, string> = {
   prompt_optimization: "提示词优化模型",
+  term_analysis: "词库分析模型",
   image_generation: "图片生成模型",
   reverse_prompt: "图片反推模型",
 };
+
+const purposeOptions: Array<{ id: Purpose; label: string; capability: Capability }> = [
+  { id: "prompt_optimization", label: "提示词优化", capability: "prompt_optimization" },
+  { id: "term_analysis", label: "词库分析", capability: "prompt_optimization" },
+  { id: "image_generation", label: "图片生成", capability: "image_generation" },
+  { id: "reverse_prompt", label: "图片反推", capability: "reverse_prompt" },
+];
 
 function emptyForm() {
   return {
@@ -248,13 +256,13 @@ export function AiConfigurationManager() {
         <div>
           <span className="section-kicker">ACTIVE MODELS</span>
           <h3 id="ai-purpose-title">当前使用的模型</h3>
-          <p>三个用途可以使用不同配置；停用或删除配置后，需要重新选择。</p>
+          <p>各项用途可以使用不同配置；词库分析未单独指定时会继承提示词优化模型。</p>
         </div>
         <div className="ai-purpose-grid">
-          {capabilityOptions.map(({ id, label }) => {
+          {purposeOptions.map(({ id, label, capability }) => {
             const eligible = configurations.filter((configuration) => configuration.enabled
               && configuration.modelEnabled
-              && configuration.capabilities.includes(id));
+              && configuration.capabilities.includes(capability));
             return (
               <label key={id}>
                 <span>{label}</span>
@@ -263,7 +271,7 @@ export function AiConfigurationManager() {
                   value={preferenceMap.get(id) ?? ""}
                   onChange={(event) => void setPurpose(id, event.target.value || null)}
                 >
-                  <option value="">尚未指定</option>
+                  <option value="">{id === "term_analysis" ? "继承提示词优化模型" : "尚未指定"}</option>
                   {eligible.map((configuration) => (
                     <option key={configuration.modelProfileId} value={configuration.modelProfileId}>
                       {configuration.name} · {configuration.displayName}

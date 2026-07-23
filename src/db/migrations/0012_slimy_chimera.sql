@@ -1,0 +1,2 @@
+ALTER TABLE "ai_model_preferences" DROP CONSTRAINT "ai_model_preferences_purpose_check";--> statement-breakpoint
+ALTER TABLE "ai_model_preferences" ADD CONSTRAINT "ai_model_preferences_purpose_check" CHECK ("ai_model_preferences"."purpose" in ('prompt_optimization', 'term_analysis', 'image_generation', 'reverse_prompt'));

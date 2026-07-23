@@ -85,6 +85,13 @@
       "when": 1784704109283,
       "tag": "0011_chilly_changeling",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784773232268,
+      "tag": "0012_slimy_chimera",
+      "breakpoints": true
     }
   ]
 }

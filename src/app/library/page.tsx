@@ -1,4 +1,4 @@
 import { AppShell } from "@/components/app-shell/app-shell";
-import { TermLibrary } from "@/components/terms/term-library";
+import { LibraryWorkspace } from "@/components/terms/library-workspace";
 
-export default function LibraryPage() { return <AppShell><div className="library-page"><header className="notebook-heading"><div><span className="section-kicker">PROMPT WIKI</span><h2>提示词百科词库</h2><p>按类别浏览常用词汇，或管理你自己的词条。新建和编辑提示词时可以直接点击插入。</p></div></header><TermLibrary /></div></AppShell>; }
+export default function LibraryPage() { return <AppShell><div className="library-page"><header className="notebook-heading"><div><span className="section-kicker">PROMPT WIKI</span><h2>提示词百科词库</h2><p>浏览和管理词条，或让 AI 从优秀的完整 Prompt 中提炼可复用描述。</p></div></header><LibraryWorkspace /></div></AppShell>; }

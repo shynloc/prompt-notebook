@@ -13,7 +13,7 @@ async function signUp(page: import("@playwright/test").Page) {
 test("persists multiple-purpose AI configuration without revealing the key", async ({ page }) => {
   await signUp(page);
   await page.goto("/settings/ai");
-  await expect(page.getByRole("heading", { name: "AI 助手配置" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI 模型", exact: true })).toBeVisible();
 
   await page.getByLabel("配置名称").fill("主要助手");
   await page.getByLabel("Base URL").fill("https://api.example.com/v1");
@@ -28,12 +28,15 @@ test("persists multiple-purpose AI configuration without revealing the key", asy
   await expect(card).not.toContainText("sk-browser-secret-1234");
   await page.getByRole("combobox", { name: "提示词优化模型" }).selectOption({ label: "主要助手 · Writer Model" });
   await expect(page.locator(".ai-message--success")).toContainText("提示词优化模型已更新");
+  await page.getByRole("combobox", { name: "词库分析模型" }).selectOption({ label: "主要助手 · Writer Model" });
+  await expect(page.locator(".ai-message--success")).toContainText("词库分析模型已更新");
   await page.getByRole("combobox", { name: "图片反推模型" }).selectOption({ label: "主要助手 · Writer Model" });
   await expect(page.locator(".ai-message--success")).toContainText("图片反推模型已更新");
 
   await page.reload();
   await expect(card).toContainText("••••1234");
   await expect(page.getByRole("combobox", { name: "提示词优化模型" })).not.toHaveValue("");
+  await expect(page.getByRole("combobox", { name: "词库分析模型" })).not.toHaveValue("");
   await expect(page.getByRole("combobox", { name: "图片反推模型" })).not.toHaveValue("");
 });
 
@@ -41,7 +44,7 @@ test("keeps AI settings usable without horizontal overflow on mobile", async ({ 
   await signUp(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/settings/ai");
-  await expect(page.getByRole("heading", { name: "AI 助手配置" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI 模型", exact: true })).toBeVisible();
   const sizes = await page.evaluate(() => ({
     clientWidth: document.documentElement.clientWidth,
     scrollWidth: document.documentElement.scrollWidth,

@@ -114,10 +114,17 @@ describe("AI configuration API", () => {
       body: { purpose: "prompt_optimization", modelProfileId: created.modelProfileId },
     }));
     expect(assigned.status).toBe(200);
+    const analyzerAssigned = await patchPreference(request(`${base}/api/v1/ai/preferences`, {
+      cookie: owner.cookie,
+      method: "PATCH",
+      body: { purpose: "term_analysis", modelProfileId: created.modelProfileId },
+    }));
+    expect(analyzerAssigned.status).toBe(200);
     const listed = await listPreferences(request(`${base}/api/v1/ai/preferences`, { cookie: owner.cookie }));
-    expect((await listed.json()).data).toEqual([
+    expect((await listed.json()).data).toEqual(expect.arrayContaining([
       { purpose: "prompt_optimization", modelProfileId: created.modelProfileId },
-    ]);
+      { purpose: "term_analysis", modelProfileId: created.modelProfileId },
+    ]));
 
     await patchConfiguration(request(`${base}/api/v1/ai/configurations/${created.id}`, {
       cookie: owner.cookie,

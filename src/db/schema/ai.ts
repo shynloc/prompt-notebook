@@ -127,7 +127,7 @@ export const aiModelPreferences = pgTable(
     index("ai_model_preferences_profile_idx").on(table.modelProfileId),
     check(
       "ai_model_preferences_purpose_check",
-      sql`${table.purpose} in ('prompt_optimization', 'image_generation', 'reverse_prompt')`,
+      sql`${table.purpose} in ('prompt_optimization', 'term_analysis', 'image_generation', 'reverse_prompt')`,
     ),
   ],
 );

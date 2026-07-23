@@ -4,6 +4,22 @@ All notable changes use the Keep a Changelog structure. Versions follow Semantic
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-23
+
+### Added
+
+- Added an AI Prompt Wiki analysis workbench that extracts exact reusable fragments, groups them by category and keeps users in control of selection and editing.
+- Added a dedicated term-analysis model purpose with automatic fallback to the selected prompt-optimization model.
+- Added guarded bulk term creation with built-in, account, and request-level duplicate detection.
+
+### Changed
+
+- Consolidated AI model and image-storage configuration behind one Settings sidebar destination with horizontal deep-linkable tabs.
+
+### Security
+
+- Updated Next.js to 16.2.11 to include the latest App Router, Server Action, cache and image-optimization security fixes; the production dependency audit is clean.
+
 ## [1.2.1] - 2026-07-22
 
 ### Fixed

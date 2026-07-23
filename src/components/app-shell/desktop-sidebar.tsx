@@ -8,8 +8,7 @@ const destinations = [
   ["项目", "/projects", "P"],
   ["变量模板", "/templates", "T"],
   ["提示词百科", "/library", "✦"],
-  ["AI 助手", "/settings/ai", "AI"],
-  ["图床设置", "/settings/storage", "IMG"],
+  ["设置", "/settings", "⚙"],
   ["AI ImageHub", "/imagehub", "◎"],
   ["新建 Prompt", "/notes/new", "+"],
 ] as const;

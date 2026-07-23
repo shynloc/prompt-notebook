@@ -5,4 +5,7 @@ export const termInputSchema = z.object({
   label: z.string().trim().min(1).max(100),
   value: z.string().trim().min(1).max(500),
 });
+export const bulkTermInputSchema = z.object({
+  terms: z.array(termInputSchema).min(1).max(80),
+});
 export const termIdSchema = z.uuid();

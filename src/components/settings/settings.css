@@ -1,0 +1,8 @@
+.settings-page { display: grid; gap: var(--space-6); }
+.settings-tabs { align-items: stretch; background: var(--color-paper); border: 2px solid var(--color-border); box-shadow: 3px 4px 0 rgb(41 39 34 / 22%); display: flex; overflow-x: auto; }
+.settings-tabs a { border-right: 1px solid var(--color-border); color: var(--color-ink); flex: 0 0 auto; font-family: var(--font-mono); font-size: .76rem; font-weight: 900; min-width: 8rem; padding: .85rem 1.1rem; text-align: center; text-decoration: none; }
+.settings-tabs a[aria-current="page"] { background: var(--color-label); color: var(--color-label-text); }
+.settings-section-heading { display: grid; gap: .55rem; }
+.settings-section-heading h3 { font-family: var(--font-serif); font-size: clamp(1.7rem, 4vw, 2.45rem); font-weight: 500; line-height: 1; margin: 0; }
+.settings-section-heading p { color: var(--color-ink-muted); margin: 0; max-width: 68ch; }
+@media (max-width: 39.99rem) { .settings-tabs a { flex: 1; min-width: 7rem; } }

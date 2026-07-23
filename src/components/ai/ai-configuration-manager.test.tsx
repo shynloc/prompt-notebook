@@ -57,6 +57,8 @@ describe("AI configuration manager", () => {
     expect(screen.getByText(/••••1234/)).toBeInTheDocument();
     expect(screen.queryByText(/sk-private/)).not.toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "提示词优化模型" })).toHaveValue(configuration.modelProfileId);
+    expect(screen.getByRole("combobox", { name: "词库分析模型" })).toHaveValue("");
+    expect(screen.getByRole("option", { name: "继承提示词优化模型" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "图片生成模型" })).toHaveValue("");
   });
 
