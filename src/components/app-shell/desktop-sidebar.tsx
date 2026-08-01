@@ -1,4 +1,5 @@
 const destinations = [
+  ["仪表盘", "/dashboard", "▦"],
   ["全部提示词", "/notes", "▦"],
   ["收藏", "/favorites", "★"],
   ["归档", "/archive", "□"],

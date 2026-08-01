@@ -1,23 +1,18 @@
-import { and, asc, count, eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
-import { noteTags, tags } from "@/db/schema";
+import { tags } from "@/db/schema";
 import { ApiError } from "@/lib/api/errors";
 import { dataResponse, errorResponse } from "@/lib/api/response";
 import { requireSession } from "@/lib/auth/session";
 import { createTagSchema } from "@/modules/tags/tag-schema";
+import { listActiveTagStatistics } from "@/modules/tags/tag-statistics";
 
 export async function GET(request: Request) {
   try {
     const session = await requireSession(request);
-    const rows = await db
-      .select({ id: tags.id, name: tags.name, count: count(noteTags.noteId) })
-      .from(tags)
-      .leftJoin(noteTags, and(eq(noteTags.tagId, tags.id), eq(noteTags.userId, session.user.id)))
-      .where(eq(tags.userId, session.user.id))
-      .groupBy(tags.id)
-      .orderBy(asc(tags.name));
-    return dataResponse(rows);
+    const rows = await listActiveTagStatistics(session.user.id);
+    return dataResponse(rows.map(({ noteCount, ...tag }) => ({ ...tag, count: noteCount })));
   } catch (error) {
     return errorResponse(error);
   }

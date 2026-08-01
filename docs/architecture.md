@@ -148,6 +148,7 @@ erDiagram
 | 方法 | 路径 | 用途 |
 |---|---|---|
 | GET/POST | `/notes` | 分页查询、新建笔记 |
+| GET | `/dashboard` | 返回当前用户的汇总卡片与有效标签分布 |
 | GET/PATCH/DELETE | `/notes/:id` | 详情、修改、移入回收站 |
 | POST | `/notes/:id/restore` | 从回收站恢复 |
 | GET/POST | `/terms` | 查询、新建自定义词条 |
