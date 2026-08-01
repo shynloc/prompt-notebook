@@ -199,13 +199,16 @@ button:focus-visible {
   }
 
   .desktop-sidebar {
+    align-self: start;
     background: var(--color-paper);
     border-right: 2px solid var(--color-border);
     display: flex;
     flex-direction: column;
-    min-height: 100dvh;
+    height: 100dvh;
+    overflow-y: auto;
     padding: var(--space-8) var(--space-5);
     position: sticky;
+    scrollbar-gutter: stable;
     top: 0;
   }
 
