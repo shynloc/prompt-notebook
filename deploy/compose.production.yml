@@ -47,6 +47,7 @@ services:
     environment:
       APP_URL: ${APP_URL:?APP_URL is required}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      BETTER_AUTH_IP_ADDRESS_HEADERS: ${BETTER_AUTH_IP_ADDRESS_HEADERS:-}
       DATABASE_URL: postgres://prompt_notebook:${POSTGRES_PASSWORD}@postgres:5432/prompt_notebook
       REDIS_URL: redis://redis:6379/0
       SMTP_HOST: ${SMTP_HOST:-}

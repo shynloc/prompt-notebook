@@ -19,11 +19,18 @@ if ((productionCompose.match(/REDIS_URL:/g) ?? []).length < 3) failures.push("pr
 for (const name of ["AI_CONNECTION_TIMEOUT_MS", "AI_TEXT_TIMEOUT_MS", "AI_REVERSE_PROMPT_TIMEOUT_MS", "AI_IMAGE_TIMEOUT_MS"]) {
   if (!productionCompose.includes(`${name}:`)) failures.push(`production compose must expose ${name}`);
 }
+if (!productionCompose.includes("BETTER_AUTH_IP_ADDRESS_HEADERS:")) failures.push("production compose must expose BETTER_AUTH_IP_ADDRESS_HEADERS");
 
 const production = process.argv.includes("--production");
 if (production) {
   try { if (new URL(process.env.APP_URL ?? "").protocol !== "https:") failures.push("APP_URL must be HTTPS"); } catch { failures.push("APP_URL is invalid"); }
   if ((process.env.BETTER_AUTH_SECRET ?? "").length < 32) failures.push("BETTER_AUTH_SECRET must be at least 32 characters");
+  const ipAddressHeaders = (process.env.BETTER_AUTH_IP_ADDRESS_HEADERS ?? "")
+    .split(",")
+    .map((header) => header.trim())
+    .filter(Boolean);
+  if (ipAddressHeaders.length === 0) failures.push("BETTER_AUTH_IP_ADDRESS_HEADERS must identify a reverse-proxy-overwritten header");
+  if (ipAddressHeaders.some((header) => !/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(header))) failures.push("BETTER_AUTH_IP_ADDRESS_HEADERS contains an invalid HTTP header name");
   for (const name of ["POSTGRES_PASSWORD", "CREDENTIAL_ENCRYPTION_KEYS", "CREDENTIAL_ACTIVE_KEY_ID"]) if (!process.env[name]) failures.push(`${name} is required`);
   const keyEntries = (process.env.CREDENTIAL_ENCRYPTION_KEYS ?? "").split(",").filter(Boolean);
   const keyIds = new Set();

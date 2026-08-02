@@ -70,6 +70,27 @@ async function signIn(email: string, password = "correct-horse-battery") {
   });
 }
 
+function rateLimitedRequest(
+  authInstance: ReturnType<typeof createPromptAuth>,
+  clientIp: string,
+  forwardedFor = "198.51.100.10, 172.64.0.1",
+) {
+  return authInstance.handler(
+    new Request(`${baseUrl}/sign-in/email`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-real-ip": clientIp,
+        "x-forwarded-for": forwardedFor,
+      },
+      body: JSON.stringify({
+        email: `missing-${randomUUID()}@example.com`,
+        password: "definitely-wrong",
+      }),
+    }),
+  );
+}
+
 describe("independent authentication", () => {
   beforeAll(() => {
     process.env.APP_URL = "http://localhost:3000";
@@ -198,5 +219,45 @@ describe("independent authentication", () => {
     expect(reset.status).toBe(200);
     expect((await signIn(email)).status).toBe(401);
     expect((await signIn(email, "new-correct-horse-battery")).status).toBe(200);
+  });
+
+  it("keeps authentication rate limits isolated by the trusted client IP header", async () => {
+    const rateLimitedAuth = createPromptAuth({
+      mailer,
+      requireEmailVerification: false,
+      ipAddressHeaders: ["x-real-ip"],
+      rateLimitEnabled: true,
+    });
+
+    const firstIpStatuses = [];
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      firstIpStatuses.push((await rateLimitedRequest(rateLimitedAuth, "203.0.113.10")).status);
+    }
+    const secondIp = await rateLimitedRequest(rateLimitedAuth, "203.0.113.11");
+
+    expect(firstIpStatuses.slice(0, 3)).toEqual([401, 401, 401]);
+    expect(firstIpStatuses[3]).toBe(429);
+    expect(secondIp.status).toBe(401);
+  });
+
+  it("ignores spoofed forwarded chains when the trusted single-value header is configured", async () => {
+    const rateLimitedAuth = createPromptAuth({
+      mailer,
+      requireEmailVerification: false,
+      ipAddressHeaders: ["x-real-ip"],
+      rateLimitEnabled: true,
+    });
+
+    const statuses = [];
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      statuses.push((await rateLimitedRequest(
+        rateLimitedAuth,
+        "203.0.113.20",
+        `${198 + attempt}.51.100.${10 + attempt}, 172.64.0.1`,
+      )).status);
+    }
+
+    expect(statuses.slice(0, 3)).toEqual([401, 401, 401]);
+    expect(statuses[3]).toBe(429);
   });
 });

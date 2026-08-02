@@ -4,6 +4,7 @@
 |---|---|---|
 | `APP_URL` | yes | Public HTTPS origin used by authentication and extension authorization |
 | `BETTER_AUTH_SECRET` | yes | Random application secret of at least 32 characters |
+| `BETTER_AUTH_IP_ADDRESS_HEADERS` | reverse-proxy deployment | Ordered, comma-separated client-IP headers that the trusted proxy overwrites; bundled Nginx uses `x-real-ip` |
 | `DATABASE_URL` | yes | PostgreSQL connection string; Compose provides this internally |
 | `CREDENTIAL_ENCRYPTION_KEYS` | yes | Comma-separated `key-id:key` ring; every key is exactly 32 bytes in hex or base64url |
 | `CREDENTIAL_ACTIVE_KEY_ID` | yes | Key ID used for newly encrypted model and image-storage credentials |
@@ -19,6 +20,18 @@
 Image-host endpoints, image-host tokens, AI Base URLs, model IDs and model API keys are user-owned database settings. They must not be fixed in source code, Docker images, the Chrome extension, or shared server environment variables.
 
 Never prefix a secret with `NEXT_PUBLIC_` or commit an environment file.
+
+## Authentication client IPs
+
+Better Auth uses the client IP to isolate authentication rate limits and record session metadata. In a reverse-proxy deployment, set `BETTER_AUTH_IP_ADDRESS_HEADERS` only to a single-value header that the final trusted proxy always overwrites. The bundled Nginx configuration uses:
+
+```text
+BETTER_AUTH_IP_ADDRESS_HEADERS=x-real-ip
+```
+
+`X-Real-IP` is safe in that configuration because Nginx assigns it from `$remote_addr` instead of forwarding a browser-supplied value. When Cloudflare or another CDN is in front of Nginx, configure Nginx `set_real_ip_from` and `real_ip_header` for the CDN's current published address ranges so `$remote_addr` becomes the verified visitor address. Do not list an arbitrary user-controlled header, and do not expose the application container port directly to the public internet.
+
+Leaving the variable empty preserves Better Auth's safe fallback behavior, but a multi-hop `X-Forwarded-For` chain cannot then be attributed to one visitor and authentication requests may share a per-route rate-limit bucket. `npm run release:check -- --production` rejects that production configuration.
 
 The generation worker does not automatically retry an image request that reaches `AI_IMAGE_TIMEOUT_MS`, because the upstream provider may still be generating after the local connection closes. Rate limits and temporary upstream 5xx errors remain eligible for bounded queue retries. Increase the timeout for a known slow provider instead of repeatedly submitting the same generation.
 

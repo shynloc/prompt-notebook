@@ -12,6 +12,8 @@ Accepted — 2026-07-19
 
 使用 Better Auth 与应用自己的 PostgreSQL。默认启用邮箱密码、验证和密码重置；会话使用同源安全 Cookie。SMTP 和 OAuth 提供商均为可选环境配置。
 
+认证接口的客户端 IP 只从部署者显式配置、且由最后一层可信反向代理覆盖的单值 Header 中读取。官方 Nginx 部署使用 `X-Real-IP`；应用不直接信任未经清洗的多跳 `X-Forwarded-For`，避免伪造 IP 绕过限流，并确保不同访客使用独立的认证限流额度。
+
 ## Consequences
 
 ### Positive
