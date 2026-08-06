@@ -1,6 +1,10 @@
-import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
 import sharp from "sharp";
+
+import {
+  resolveRemoteResourceTarget,
+  secureRemoteResourceFetch,
+} from "@/modules/ai/secure-outbound-fetch";
+import type { AddressResolver } from "@/modules/ai/outbound-url-policy";
 
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_IMAGE_PIXELS = 40_000_000;
@@ -13,6 +17,11 @@ const signatures = [
   { mime: "image/webp", matches: (data: Buffer) => data.subarray(0, 4).toString() === "RIFF" && data.subarray(8, 12).toString() === "WEBP" },
 ] as const;
 
+export interface RemoteResourceDependencies {
+  resolver?: AddressResolver;
+  request?: typeof secureRemoteResourceFetch;
+}
+
 export async function inspectImage(data: Buffer) {
   if (!data.length) throw new Error("图片内容为空");
   if (data.length > MAX_IMAGE_BYTES) throw new Error("图片不能超过 10MB");
@@ -24,37 +33,34 @@ export async function inspectImage(data: Buffer) {
   return { mimeType: signature.mime, width: metadata.width, height: metadata.height, sizeBytes: data.length };
 }
 
-function isPrivateAddress(address: string) {
-  const normalized = address.toLocaleLowerCase();
-  if (normalized.startsWith("::ffff:")) return isPrivateAddress(normalized.slice(7));
-  if (normalized.includes(":")) {
-    return normalized === "::" || normalized === "::1" || normalized.startsWith("fe8") ||
-      normalized.startsWith("fe9") || normalized.startsWith("fea") || normalized.startsWith("feb") ||
-      normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("ff");
+function safeRemoteUrlError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (message.includes("HTTP or HTTPS")) return new Error("只支持 HTTP 或 HTTPS 链接");
+  if (message.includes("credentials") || message.includes("custom port")) {
+    return new Error("链接不能包含凭据或自定义端口");
   }
-  const parts = normalized.split(".").map(Number);
-  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true;
-  return parts[0] === 0 || parts[0] === 10 || parts[0] === 127 || parts[0] >= 224 ||
-    (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) ||
-    (parts[0] === 169 && parts[1] === 254) ||
-    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
-    (parts[0] === 192 && parts[1] === 168) ||
-    (parts[0] === 198 && parts[1] >= 18 && parts[1] <= 19);
+  if (message.includes("private or reserved") || message.includes("local hostname")) {
+    return new Error("不能导入内网或保留地址");
+  }
+  if (message.includes("did not resolve")) return new Error("远程图片域名无法解析");
+  return new Error("图片链接无效");
 }
 
-export async function assertSafeRemoteUrl(value: string) {
-  const url = new URL(value);
-  if (!["http:", "https:"].includes(url.protocol)) throw new Error("只支持 HTTP 或 HTTPS 链接");
-  if (url.username || url.password || url.port) throw new Error("链接不能包含凭据或自定义端口");
-  const addresses = isIP(url.hostname) ? [{ address: url.hostname }] : await lookup(url.hostname, { all: true });
-  if (!addresses.length || addresses.some(({ address }) => isPrivateAddress(address))) throw new Error("不能导入内网地址");
-  return url;
+export async function assertSafeRemoteUrl(value: string, resolver?: AddressResolver) {
+  try {
+    return (await resolveRemoteResourceTarget(value, resolver)).url;
+  } catch (error) {
+    throw safeRemoteUrlError(error);
+  }
 }
 
 async function readLimitedBody(response: Response, limit: number, errorMessage: string) {
   if (!response.body) throw new Error("远程服务器没有返回内容");
   const declared = Number(response.headers.get("content-length") ?? 0);
-  if (Number.isFinite(declared) && declared > limit) throw new Error(errorMessage);
+  if (Number.isFinite(declared) && declared > limit) {
+    await response.body.cancel();
+    throw new Error(errorMessage);
+  }
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -73,35 +79,49 @@ async function readLimitedBody(response: Response, limit: number, errorMessage: 
 
 export async function fetchRemoteResource(
   value: string,
-  options: { accept: string; maxBytes: number; htmlMaxBytes?: number; userAgent?: string },
+  options: {
+    accept: string;
+    maxBytes: number;
+    htmlMaxBytes?: number;
+    userAgent?: string;
+  } & RemoteResourceDependencies,
 ) {
-  let url = await assertSafeRemoteUrl(value);
+  let url = await assertSafeRemoteUrl(value, options.resolver);
+  const request = options.request ?? secureRemoteResourceFetch;
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     let response: Response;
     try {
-      response = await fetch(url, {
-        redirect: "manual",
+      response = await request(url, {
         headers: {
           accept: options.accept,
           "user-agent": options.userAgent ?? "PromptNotebookImageBot/1.0",
         },
         signal: controller.signal,
-      });
+      }, { resolver: options.resolver });
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") throw new Error("远程网页响应超时");
+      if (error instanceof Error && (
+        error.message.includes("private or reserved") ||
+        error.message.includes("local hostname") ||
+        error.message.includes("did not resolve")
+      )) throw safeRemoteUrlError(error);
       throw new Error("无法连接远程网页");
     } finally {
       clearTimeout(timeout);
     }
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get("location");
+      await response.body?.cancel();
       if (!location) throw new Error("远程地址重定向无效");
-      url = await assertSafeRemoteUrl(new URL(location, url).toString());
+      url = await assertSafeRemoteUrl(new URL(location, url).toString(), options.resolver);
       continue;
     }
-    if (!response.ok) throw new Error(`远程服务器拒绝访问 (${response.status})`);
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error(`远程服务器拒绝访问 (${response.status})`);
+    }
     const contentType = response.headers.get("content-type")?.toLocaleLowerCase() ?? "";
     const html = contentType.includes("text/html") || contentType.includes("application/xhtml+xml");
     const limit = html && options.htmlMaxBytes ? options.htmlMaxBytes : options.maxBytes;
@@ -111,9 +131,10 @@ export async function fetchRemoteResource(
   throw new Error("远程地址重定向次数过多");
 }
 
-export async function downloadRemoteImage(value: string) {
+export async function downloadRemoteImage(value: string, dependencies: RemoteResourceDependencies = {}) {
   return (await fetchRemoteResource(value, {
     accept: "image/jpeg,image/png,image/webp",
     maxBytes: MAX_IMAGE_BYTES,
+    ...dependencies,
   })).data;
 }

@@ -11,7 +11,7 @@ import type { NoteView } from "./types";
 
 type GalleryView = "active" | "favorites" | "archived" | "trash";
 
-export function NoteGallery({ tagId, view = "active", heading = "提示词作品库", intro = "把提示词、标签和生成作品放在同一个可跨设备同步的笔记本里。" }: { tagId?: string; view?: GalleryView; heading?: string; intro?: string }) {
+export function NoteGallery({ characterProfileId, tagId, view = "active", heading = "提示词作品库", intro = "把提示词、标签和生成作品放在同一个可跨设备同步的笔记本里。" }: { characterProfileId?: string; tagId?: string; view?: GalleryView; heading?: string; intro?: string }) {
   const [notes, setNotes] = useState<NoteView[]>([]);
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -35,6 +35,7 @@ export function NoteGallery({ tagId, view = "active", heading = "提示词作品
     const params = new URLSearchParams({ limit: "60" });
     if (debounced) params.set("q", debounced);
     if (tagId) params.set("tagId", tagId);
+    if (characterProfileId) params.set("characterProfileId", characterProfileId);
     if (view === "favorites") params.set("favorite", "true");
     else if (view !== "active") params.set("view", view);
     if (imageFilter !== "all") params.set("hasImage", imageFilter === "with" ? "true" : "false");
@@ -54,7 +55,7 @@ export function NoteGallery({ tagId, view = "active", heading = "提示词作品
       setNextCursor(body.meta?.nextCursor ?? null);
       setState("ready");
     } catch { setState("error"); }
-  }, [advanced, debounced, imageFilter, sort, tagId, view]);
+  }, [advanced, characterProfileId, debounced, imageFilter, sort, tagId, view]);
   useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load]);
   useEffect(() => {
     const url = new URL(window.location.href);

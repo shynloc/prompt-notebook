@@ -11,7 +11,8 @@ server {
     ssl_certificate /etc/letsencrypt/live/prompts.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/prompts.example.com/privkey.pem;
 
-    client_max_body_size 12m;
+    # One ImageHub request may contain four 10 MB reference images plus multipart overhead.
+    client_max_body_size 45m;
     proxy_read_timeout 120s;
 
     location / {

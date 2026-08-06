@@ -13,7 +13,7 @@ async function signUp(page: import("@playwright/test").Page) {
 test("persists multiple-purpose AI configuration without revealing the key", async ({ page }) => {
   await signUp(page);
   await page.goto("/settings/ai");
-  await expect(page.getByRole("heading", { name: "AI 模型", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "大模型配置", exact: true })).toBeVisible();
 
   await page.getByLabel("配置名称").fill("主要助手");
   await page.getByLabel("Base URL").fill("https://api.example.com/v1");
@@ -44,7 +44,7 @@ test("keeps AI settings usable without horizontal overflow on mobile", async ({ 
   await signUp(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/settings/ai");
-  await expect(page.getByRole("heading", { name: "AI 模型", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "大模型配置", exact: true })).toBeVisible();
   const sizes = await page.evaluate(() => ({
     clientWidth: document.documentElement.clientWidth,
     scrollWidth: document.documentElement.scrollWidth,

@@ -1,5 +1,6 @@
 export * from "./auth";
 export * from "./ai";
+export * from "./characters";
 export * from "./extension";
 export * from "./media";
 export * from "./notes";

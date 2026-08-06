@@ -26,4 +26,15 @@ describe("generation request schema", () => {
   it("rejects dimensions outside the provider ceiling", () => {
     expect(() => createGenerationSchema.parse({ ...base, width: 4096, quality: "high" })).toThrow();
   });
+
+  it("requires a profile for unique character image selections", () => {
+    const imageId = "76deeb7b-a507-4ed2-926d-8be446b61a10";
+    expect(() => createGenerationSchema.parse({ ...base, quality: "high", characterImageIds: [imageId] })).toThrow();
+    expect(() => createGenerationSchema.parse({
+      ...base,
+      quality: "high",
+      characterProfileId: "0c978c19-4d80-4a96-9f65-cb96686b0f77",
+      characterImageIds: [imageId, imageId],
+    })).toThrow();
+  });
 });

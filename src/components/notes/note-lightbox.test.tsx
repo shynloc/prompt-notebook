@@ -28,6 +28,7 @@ const note: NoteView = {
   version: 1,
   updatedAt: "2026-08-06T00:00:00.000Z",
   tags: [],
+  characterProfiles: [],
   images,
   coverImage: images[0],
 };
@@ -67,5 +68,28 @@ describe("NoteLightbox image navigation", () => {
       images[2].displayUrl,
     );
     expect(screen.getByText("3 / 3")).toBeVisible();
+  });
+
+  it("shows a linked AI Model profile inside note details", () => {
+    render(
+      <NoteLightbox
+        note={{ ...note, characterProfiles: [{
+          id: "20000000-0000-4000-8000-000000000001",
+          name: "Luna",
+          summary: "都市时装角色",
+          archivedAt: null,
+          deletedAt: null,
+          role: "primary",
+          sortOrder: 0,
+          avatar: null,
+        }] }}
+        view="active"
+        onClose={vi.fn()}
+        onDeleted={vi.fn()}
+        onUpdated={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "主要角色 AI Model：Luna" })).toHaveAttribute("href", "/ai-models/20000000-0000-4000-8000-000000000001");
   });
 });

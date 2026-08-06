@@ -1,0 +1,2 @@
+CREATE INDEX "ai_generation_jobs_stale_preparing_idx" ON "ai_generation_jobs" USING btree ("heartbeat_at") WHERE "ai_generation_jobs"."status" = 'preparing';--> statement-breakpoint
+CREATE INDEX "ai_generation_jobs_queued_reconcile_idx" ON "ai_generation_jobs" USING btree ("created_at") WHERE "ai_generation_jobs"."status" = 'queued';

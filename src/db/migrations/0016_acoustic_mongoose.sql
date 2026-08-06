@@ -1,0 +1,2 @@
+ALTER TABLE "ai_generation_jobs" ADD COLUMN "character_profile_id" uuid;--> statement-breakpoint
+CREATE INDEX "ai_generation_jobs_active_character_idx" ON "ai_generation_jobs" USING btree ("user_id","character_profile_id") WHERE "ai_generation_jobs"."character_profile_id" is not null and "ai_generation_jobs"."status" in ('preparing', 'queued', 'running', 'cancel_requested');

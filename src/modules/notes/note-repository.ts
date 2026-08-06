@@ -15,17 +15,35 @@ import {
 } from "drizzle-orm";
 
 import { db } from "@/db/client";
-import { noteProjects, noteTags, noteVersions, promptImages, promptNotes, tags } from "@/db/schema";
+import {
+  characterProfileImages,
+  characterProfiles,
+  noteCharacterProfiles,
+  noteProjects,
+  noteTags,
+  noteVersions,
+  promptImages,
+  promptNotes,
+  tags,
+} from "@/db/schema";
+import { ApiError } from "@/lib/api/errors";
 import { promptContentHash } from "@/modules/search/content-hash";
+import type { NoteCharacterAssociationInput } from "@/modules/characters/character-schema";
 import type { CreateNoteInput, NoteImageInput, UpdateNoteInput } from "./note-schema";
 
 export type PromptNote = typeof promptNotes.$inferSelect;
 export type PromptImage = typeof promptImages.$inferSelect;
 export type PromptTag = Pick<typeof tags.$inferSelect, "id" | "name">;
+export type PromptCharacter = Pick<typeof characterProfiles.$inferSelect, "id" | "name" | "summary" | "archivedAt" | "deletedAt"> & {
+  role: "primary" | "supporting" | "reference";
+  sortOrder: number;
+  avatar: Pick<typeof characterProfileImages.$inferSelect, "id" | "thumbnailUrl" | "displayUrl" | "focusX" | "focusY"> | null;
+};
 export type PromptNoteView = PromptNote & {
   tags: PromptTag[];
   images: PromptImage[];
   coverImage: PromptImage | null;
+  characterProfiles: PromptCharacter[];
 };
 
 interface Cursor {
@@ -40,6 +58,7 @@ export interface NoteListOptions {
   q?: string;
   tagId?: string;
   projectId?: string;
+  characterProfileId?: string;
   sourceHost?: string;
   dateFrom?: Date;
   dateTo?: Date;
@@ -70,7 +89,7 @@ function decodeCursor(value: string, sort: "updated" | "title"): Cursor | null {
 function noteChanges(input: UpdateNoteInput) {
   return Object.fromEntries(
     Object.entries(input).filter(
-      ([key, value]) => !["version", "tags", "images"].includes(key) && value !== undefined,
+      ([key, value]) => !["version", "tags", "images", "characterProfiles"].includes(key) && value !== undefined,
     ),
   );
 }
@@ -89,18 +108,45 @@ export class NoteRepository {
   private async hydrate(rows: PromptNote[]): Promise<PromptNoteView[]> {
     if (rows.length === 0) return [];
     const ids = rows.map((row) => row.id);
-    const [tagRows, imageRows] = await Promise.all([
+    const [tagRows, imageRows, characterRows] = await Promise.all([
       db
         .select({ noteId: noteTags.noteId, id: tags.id, name: tags.name })
         .from(noteTags)
         .innerJoin(tags, eq(noteTags.tagId, tags.id))
-        .where(inArray(noteTags.noteId, ids))
+        .where(and(eq(noteTags.userId, rows[0].userId), inArray(noteTags.noteId, ids)))
         .orderBy(tags.name),
       db
         .select()
         .from(promptImages)
-        .where(inArray(promptImages.noteId, ids))
+        .where(and(eq(promptImages.userId, rows[0].userId), inArray(promptImages.noteId, ids)))
         .orderBy(promptImages.sortOrder),
+      db.select({
+        noteId: noteCharacterProfiles.noteId,
+        id: characterProfiles.id,
+        name: characterProfiles.name,
+        summary: characterProfiles.summary,
+        archivedAt: characterProfiles.archivedAt,
+        deletedAt: characterProfiles.deletedAt,
+        role: noteCharacterProfiles.role,
+        sortOrder: noteCharacterProfiles.sortOrder,
+        avatarId: characterProfileImages.id,
+        avatarThumbnailUrl: characterProfileImages.thumbnailUrl,
+        avatarDisplayUrl: characterProfileImages.displayUrl,
+        avatarFocusX: characterProfileImages.focusX,
+        avatarFocusY: characterProfileImages.focusY,
+      }).from(noteCharacterProfiles)
+        .innerJoin(characterProfiles, and(
+          eq(characterProfiles.id, noteCharacterProfiles.profileId),
+          eq(characterProfiles.userId, rows[0].userId),
+        ))
+        .leftJoin(characterProfileImages, and(
+          eq(characterProfileImages.profileId, characterProfiles.id),
+          eq(characterProfileImages.userId, rows[0].userId),
+          eq(characterProfileImages.isCover, true),
+          isNull(characterProfileImages.deletedAt),
+        ))
+        .where(and(eq(noteCharacterProfiles.userId, rows[0].userId), inArray(noteCharacterProfiles.noteId, ids)))
+        .orderBy(noteCharacterProfiles.sortOrder),
     ]);
     return rows.map((row) => {
       const images = imageRows.filter((image) => image.noteId === row.id);
@@ -111,6 +157,22 @@ export class NoteRepository {
           .map(({ id, name }) => ({ id, name })),
         images,
         coverImage: images.find((image) => image.isCover) ?? images[0] ?? null,
+        characterProfiles: characterRows.filter((character) => character.noteId === row.id).map((character) => ({
+          id: character.id,
+          name: character.name,
+          summary: character.summary,
+          archivedAt: character.archivedAt,
+          deletedAt: character.deletedAt,
+          role: character.role as PromptCharacter["role"],
+          sortOrder: character.sortOrder,
+          avatar: character.avatarId ? {
+            id: character.avatarId,
+            thumbnailUrl: character.avatarThumbnailUrl!,
+            displayUrl: character.avatarDisplayUrl!,
+            focusX: character.avatarFocusX!,
+            focusY: character.avatarFocusY!,
+          } : null,
+        })),
       };
     });
   }
@@ -121,6 +183,7 @@ export class NoteRepository {
     noteId: string,
     tagNames?: string[],
     images?: NoteImageInput[],
+    characters?: NoteCharacterAssociationInput[],
   ) {
     if (tagNames !== undefined) {
       await tx.delete(noteTags).where(and(eq(noteTags.noteId, noteId), eq(noteTags.userId, userId)));
@@ -152,13 +215,52 @@ export class NoteRepository {
         })));
       }
     }
+    if (characters !== undefined) {
+      const profileIds = characters.map((character) => character.id);
+      if (profileIds.length) {
+        const existingLinks = await tx.select({ id: noteCharacterProfiles.profileId })
+          .from(noteCharacterProfiles)
+          .where(and(
+            eq(noteCharacterProfiles.noteId, noteId),
+            eq(noteCharacterProfiles.userId, userId),
+            inArray(noteCharacterProfiles.profileId, profileIds),
+          ));
+        const owned = await tx.select({
+          id: characterProfiles.id,
+          deletedAt: characterProfiles.deletedAt,
+        }).from(characterProfiles).where(and(
+          eq(characterProfiles.userId, userId),
+          inArray(characterProfiles.id, profileIds),
+        ));
+        const retainedIds = new Set(existingLinks.map((link) => link.id));
+        const allowedIds = new Set(owned
+          .filter((profile) => profile.deletedAt === null || retainedIds.has(profile.id))
+          .map((profile) => profile.id));
+        if (allowedIds.size !== new Set(profileIds).size) {
+          throw new ApiError(404, "CHARACTER_PROFILE_NOT_FOUND", "One or more AI Model profiles were not found");
+        }
+      }
+      await tx.delete(noteCharacterProfiles).where(and(
+        eq(noteCharacterProfiles.noteId, noteId),
+        eq(noteCharacterProfiles.userId, userId),
+      ));
+      if (characters.length) {
+        await tx.insert(noteCharacterProfiles).values(characters.map((character, index) => ({
+          noteId,
+          profileId: character.id,
+          userId,
+          role: character.role,
+          sortOrder: character.sortOrder ?? index,
+        })));
+      }
+    }
   }
 
   async create(userId: string, input: CreateNoteInput) {
-    const { tags: tagNames, images, ...note } = input;
+    const { tags: tagNames, images, characterProfiles: characters, ...note } = input;
     const created = await db.transaction(async (tx) => {
       const [row] = await tx.insert(promptNotes).values({ ...note, userId, contentHash: promptContentHash(note.prompt, note.negativePrompt) }).returning();
-      await this.replaceRelations(tx, userId, row.id, tagNames, images);
+      await this.replaceRelations(tx, userId, row.id, tagNames, images, characters);
       return row;
     });
     return (await this.hydrate([created]))[0];
@@ -188,6 +290,9 @@ export class NoteRepository {
     const projectFilter = options.projectId
       ? sql`exists (select 1 from ${noteProjects} np where np.note_id = ${promptNotes.id} and np.project_id = ${options.projectId} and np.user_id = ${userId})`
       : undefined;
+    const characterFilter = options.characterProfileId
+      ? sql`exists (select 1 from ${noteCharacterProfiles} ncp where ncp.note_id = ${promptNotes.id} and ncp.profile_id = ${options.characterProfileId} and ncp.user_id = ${userId})`
+      : undefined;
     const sourceFilter = options.sourceHost
       ? or(sql`${promptNotes.sourceUrl} ilike ${`%://${options.sourceHost}/%`}`, sql`${promptNotes.sourceUrl} ilike ${`%://${options.sourceHost}`}`)
       : undefined;
@@ -213,6 +318,7 @@ export class NoteRepository {
           searchFilter,
           tagFilter,
           projectFilter,
+          characterFilter,
           sourceFilter,
           options.dateFrom ? gte(promptNotes.createdAt, options.dateFrom) : undefined,
           options.dateTo ? lte(promptNotes.createdAt, options.dateTo) : undefined,
@@ -277,7 +383,7 @@ export class NoteRepository {
         where ${noteVersions.noteId} = ${id} and ${noteVersions.userId} = ${userId}
         order by ${noteVersions.createdAt} desc offset 50
       )`);
-      await this.replaceRelations(tx, userId, id, input.tags, input.images);
+      await this.replaceRelations(tx, userId, id, input.tags, input.images, input.characterProfiles);
       return row;
     });
     return updated ? (await this.hydrate([updated]))[0] : null;

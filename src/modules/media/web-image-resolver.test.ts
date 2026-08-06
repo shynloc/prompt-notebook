@@ -1,6 +1,7 @@
 // @vitest-environment node
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
 import { extractPageImageCandidates, MAX_HTML_BYTES, resolveWebImage } from "./web-image-resolver";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
@@ -10,11 +11,10 @@ function response(body: BodyInit, contentType: string, headers: Record<string, s
 }
 
 describe("web image resolver", () => {
-  afterEach(() => vi.restoreAllMocks());
-
   it("keeps direct raster imports working", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(response(PNG, "image/png"));
-    await expect(resolveWebImage("https://93.184.216.34/direct.png")).resolves.toEqual(PNG);
+    const request = vi.fn(async () => response(PNG, "image/png"));
+    await expect(resolveWebImage("https://93.184.216.34/direct.png", { request })).resolves.toEqual(PNG);
+    expect(request).toHaveBeenCalledOnce();
   });
 
   it("extracts Open Graph and Twitter Card images regardless of attribute order", () => {
@@ -31,11 +31,11 @@ describe("web image resolver", () => {
   });
 
   it("downloads and validates a declared page preview", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch")
+    const request = vi.fn()
       .mockResolvedValueOnce(response('<html><head><meta property="og:image" content="https://93.184.216.35/media.png"></head></html>', "text/html; charset=utf-8"))
       .mockResolvedValueOnce(response(PNG, "image/png"));
-    await expect(resolveWebImage("https://93.184.216.34/post/1")).resolves.toEqual(PNG);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await expect(resolveWebImage("https://93.184.216.34/post/1", { request })).resolves.toEqual(PNG);
+    expect(request).toHaveBeenCalledTimes(2);
   });
 
   it("finds public X media candidates without a third-party resolver", () => {
@@ -46,15 +46,14 @@ describe("web image resolver", () => {
   });
 
   it("rejects pages with no preview, private candidates, and oversized HTML", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(response("<html><head><title>No image</title></head></html>", "text/html"));
-    await expect(resolveWebImage("https://93.184.216.34/no-image")).rejects.toThrow(/没有提供/);
-    vi.restoreAllMocks();
+    const noPreview = vi.fn(async () => response("<html><head><title>No image</title></head></html>", "text/html"));
+    await expect(resolveWebImage("https://93.184.216.34/no-image", { request: noPreview })).rejects.toThrow(/没有提供/);
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(response('<meta property="og:image" content="http://127.0.0.1/private.png">', "text/html"));
-    await expect(resolveWebImage("https://93.184.216.34/private-candidate")).rejects.toThrow(/无法下载有效/);
-    vi.restoreAllMocks();
+    const privateCandidate = vi.fn(async () => response('<meta property="og:image" content="http://127.0.0.1/private.png">', "text/html"));
+    await expect(resolveWebImage("https://93.184.216.34/private-candidate", { request: privateCandidate })).rejects.toThrow(/无法下载有效/);
+    expect(privateCandidate).toHaveBeenCalledOnce();
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(response("<html></html>", "text/html", { "content-length": String(MAX_HTML_BYTES + 1) }));
-    await expect(resolveWebImage("https://93.184.216.34/huge-page")).rejects.toThrow(/网页内容过大/);
+    const oversized = vi.fn(async () => response("<html></html>", "text/html", { "content-length": String(MAX_HTML_BYTES + 1) }));
+    await expect(resolveWebImage("https://93.184.216.34/huge-page", { request: oversized })).rejects.toThrow(/网页内容过大/);
   });
 });

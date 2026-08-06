@@ -1,4 +1,5 @@
 import type { NoteImage } from "@/components/notes/types";
+import type { NoteCharacterAssociationInput } from "@/modules/characters/character-schema";
 
 const DATABASE_NAME = "prompt-notebook-local";
 const DATABASE_VERSION = 1;
@@ -13,11 +14,12 @@ export interface PromptDraftPayload {
   sourceTitle: string;
   tags: string[];
   images: NoteImage[];
+  characterProfiles?: NoteCharacterAssociationInput[];
 }
 
 export interface StoredPromptDraft extends PromptDraftPayload {
   key: string;
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   updatedAt: number;
   serverUpdatedAt: string | null;
 }
@@ -58,7 +60,8 @@ export function hasDraftContent(draft: PromptDraftPayload) {
     || draft.sourceUrl.trim()
     || draft.sourceTitle.trim()
     || draft.tags.length
-    || draft.images.length,
+    || draft.images.length
+    || draft.characterProfiles?.length,
   );
 }
 
@@ -70,14 +73,19 @@ export function isRecoverableDraft(draft: StoredPromptDraft, serverUpdatedAt?: s
 }
 
 export async function readPromptDraft(key: string) {
-  return withStore<StoredPromptDraft | undefined>("readonly", (store) => store.get(key));
+  const draft = await withStore<StoredPromptDraft | undefined>("readonly", (store) => store.get(key));
+  if (!draft) return draft;
+  return {
+    ...draft,
+    characterProfiles: Array.isArray(draft.characterProfiles) ? draft.characterProfiles : [],
+  };
 }
 
 export async function writePromptDraft(key: string, payload: PromptDraftPayload, serverUpdatedAt?: string) {
   const draft: StoredPromptDraft = {
     ...payload,
     key,
-    schemaVersion: 1,
+    schemaVersion: 2,
     updatedAt: Date.now(),
     serverUpdatedAt: serverUpdatedAt ?? null,
   };

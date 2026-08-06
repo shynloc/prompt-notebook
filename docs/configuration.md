@@ -31,6 +31,8 @@ BETTER_AUTH_IP_ADDRESS_HEADERS=x-real-ip
 
 `X-Real-IP` is safe in that configuration because Nginx assigns it from `$remote_addr` instead of forwarding a browser-supplied value. When Cloudflare or another CDN is in front of Nginx, configure Nginx `set_real_ip_from` and `real_ip_header` for the CDN's current published address ranges so `$remote_addr` becomes the verified visitor address. Do not list an arbitrary user-controlled header, and do not expose the application container port directly to the public internet.
 
+The bundled Nginx example allows a 45 MB request body. Keep an equivalent limit when using another reverse proxy: ImageHub accepts up to four 10 MB browser-uploaded reference images in one multipart request, plus form overhead. Individual image validation remains capped at 10 MB inside the application.
+
 Leaving the variable empty preserves Better Auth's safe fallback behavior, but a multi-hop `X-Forwarded-For` chain cannot then be attributed to one visitor and authentication requests may share a per-route rate-limit bucket. `npm run release:check -- --production` rejects that production configuration.
 
 The generation worker does not automatically retry an image request that reaches `AI_IMAGE_TIMEOUT_MS`, because the upstream provider may still be generating after the local connection closes. Rate limits and temporary upstream 5xx errors remain eligible for bounded queue retries. Increase the timeout for a known slow provider instead of repeatedly submitting the same generation.

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { CharacterBadges } from "@/components/characters/character-badges";
 import { DefaultCover } from "./default-cover";
 import { HistoryPanel } from "./history-panel";
 import { ShareManager } from "@/components/sharing/share-manager";
@@ -89,6 +90,7 @@ export function NoteLightbox({ note, view, onClose, onDeleted, onUpdated }: { no
             <h2 id="lightbox-title">{note.title}</h2>
           </div>
           <div className="tag-list">{note.tags.map((tag) => <Link key={tag.id} href={`/tags/${tag.id}`}>{tag.name}</Link>)}</div>
+          <CharacterBadges profiles={note.characterProfiles ?? []} />
           {note.sourceUrl ? <a className="note-source" href={note.sourceUrl} target="_blank" rel="noopener noreferrer"><span>来源</span><strong>{note.sourceTitle || new URL(note.sourceUrl).hostname}</strong><small>{new URL(note.sourceUrl).hostname} · 新窗口打开</small></a> : null}
           <div className="lightbox__prompt"><pre>{note.prompt}</pre></div>
           {note.negativePrompt ? <div><h3>负面提示词</h3><pre>{note.negativePrompt}</pre></div> : null}

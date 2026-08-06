@@ -148,6 +148,49 @@ describe("AI ImageHub workbench", () => {
     expect(new Headers(saveCall?.[1]?.headers).get("idempotency-key")).toBe(`imagehub-note:${resultAsset.jobId}`);
   });
 
+  it("offers an explicit retry without a stale AI Model association", async () => {
+    const characterJob: GenerationJob = {
+      ...job("succeeded"),
+      characterProfile: {
+        id: "22222222-2222-4222-8222-222222222222",
+        name: "Luna",
+        version: 1,
+        imageIds: [],
+        available: true,
+      },
+    };
+    let noteAttempt = 0;
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/api/v1/generations?") && !init?.method) return Response.json({ data: [characterJob] });
+      if (url === "/api/v1/notes" && init?.method === "POST") {
+        noteAttempt += 1;
+        if (noteAttempt === 1) {
+          return Response.json({ error: { code: "CHARACTER_PROFILE_NOT_FOUND", message: "Character profile unavailable" } }, { status: 422 });
+        }
+        return Response.json({ data: { id: "note-1" }, meta: { replayed: false } }, { status: 201 });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    render(<ImageHubWorkbench />);
+    await screen.findByText("生成完成");
+    fireEvent.click(screen.getByRole("button", { name: "保存为笔记" }));
+
+    expect(await screen.findByText("关联的 AI Model 已被移入回收站或删除，笔记尚未创建。你可以移除失效的角色关联后再次保存。")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "移除角色关联后保存" }));
+    await screen.findByText("已保存为新的提示词笔记。");
+
+    const noteCalls = fetcher.mock.calls.filter(([url]) => String(url) === "/api/v1/notes");
+    expect(noteCalls).toHaveLength(2);
+    expect(JSON.parse(String(noteCalls[0][1]?.body)).characterProfiles).toEqual([
+      { id: characterJob.characterProfile?.id, role: "primary", sortOrder: 0 },
+    ]);
+    expect(JSON.parse(String(noteCalls[1][1]?.body)).characterProfiles).toEqual([]);
+    expect(new Headers(noteCalls[0][1]?.headers).get("idempotency-key")).toBe(new Headers(noteCalls[1][1]?.headers).get("idempotency-key"));
+    expect(screen.getByRole("button", { name: "已保存" })).toBeDisabled();
+  });
+
   it("deletes a failed history card after confirmation", async () => {
     const failed = { ...job("failed"), errorMessage: "Provider rejected the request" };
     const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {

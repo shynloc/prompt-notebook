@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { PromptOptimizationDialog, type PromptOptimizationState } from "@/components/ai/prompt-optimization-dialog";
+import { GenerationCharacterPicker } from "@/components/characters/generation-character-picker";
 import type { NoteImage, NoteView } from "@/components/notes/types";
 
 import {
@@ -46,6 +47,13 @@ function apiMessage(body: unknown, fallback: string) {
   return fallback;
 }
 
+function apiErrorCode(body: unknown) {
+  if (typeof body !== "object" || body === null || !("error" in body)) return null;
+  const error = (body as { error?: unknown }).error;
+  if (typeof error !== "object" || error === null || !("code" in error)) return null;
+  return typeof (error as { code?: unknown }).code === "string" ? (error as { code: string }).code : null;
+}
+
 function noteImage(asset: GenerationAsset): NoteImage {
   return {
     storageProvider: asset.storageProvider,
@@ -74,6 +82,7 @@ function filenameFromDisposition(value: string | null, fallback: string) {
 export function ImageHubWorkbench() {
   const searchParams = useSearchParams();
   const sourceNoteId = searchParams.get("note");
+  const sourceCharacterId = searchParams.get("character");
   const initialized = useRef(false);
   const pollAttempt = useRef(0);
   const pendingActionKeys = useRef(new Set<string>());
@@ -85,6 +94,8 @@ export function ImageHubWorkbench() {
   const [quality, setQuality] = useState<GenerationJob["quality"]>("auto");
   const [imageCount, setImageCount] = useState(1);
   const [references, setReferences] = useState<File[]>([]);
+  const [characterProfileId, setCharacterProfileId] = useState<string>();
+  const [characterImageIds, setCharacterImageIds] = useState<string[]>([]);
   const [jobs, setJobs] = useState<GenerationJob[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [pollCycle, setPollCycle] = useState(0);
@@ -93,6 +104,7 @@ export function ImageHubWorkbench() {
   const [pendingActions, setPendingActions] = useState<Set<string>>(() => new Set());
   const [jobFeedback, setJobFeedback] = useState<Record<string, string>>({});
   const [savedJobs, setSavedJobs] = useState<Set<string>>(() => new Set());
+  const [characterSaveFallbacks, setCharacterSaveFallbacks] = useState<Set<string>>(() => new Set());
   const [reverse, setReverse] = useState<{ status: "loading" | "ready" | "error"; prompt?: string; model?: string; message?: string } | null>(null);
   const [optimization, setOptimization] = useState<PromptOptimizationState | null>(null);
   const { width, height } = imageSizeFor(aspectRatio, resolution);
@@ -122,6 +134,22 @@ export function ImageHubWorkbench() {
     initialized.current = true;
     async function initialize() {
       try {
+        async function selectCharacter(profileId: string | undefined, imageIds: string[] = []) {
+          if (!profileId) return;
+          if (imageIds.length) {
+            setCharacterProfileId(profileId);
+            setCharacterImageIds(imageIds.slice(0, 4));
+            return;
+          }
+          const response = await fetch(`/api/v1/ai-models/${profileId}`, { cache: "no-store" });
+          if (!response.ok) return;
+          const profile = (await response.json()).data as { primaryImage?: { id: string } | null; images?: Array<{ id: string }> };
+          const imageId = profile.primaryImage?.id ?? profile.images?.[0]?.id;
+          if (imageId) {
+            setCharacterProfileId(profileId);
+            setCharacterImageIds([imageId]);
+          }
+        }
         const historyResponse = await fetch("/api/v1/generations?limit=30&status=all", { cache: "no-store" });
         if (historyResponse.status === 401) {
           window.location.assign(`/sign-in?returnTo=${encodeURIComponent("/imagehub")}`);
@@ -137,15 +165,30 @@ export function ImageHubWorkbench() {
             setTitle(note.title);
             setPrompt(note.prompt);
             setNegativePrompt(note.negativePrompt ?? "");
+            const character = note.characterProfiles.find((item) => item.role === "primary" && !item.archivedAt)
+              ?? note.characterProfiles.find((item) => !item.archivedAt);
+            await selectCharacter(character?.id);
           }
         } else {
           const draft = sessionStorage.getItem("prompt-notebook:imagehub-draft");
           if (draft) {
             sessionStorage.removeItem("prompt-notebook:imagehub-draft");
-            const parsed = JSON.parse(draft) as { title?: string; prompt?: string; negativePrompt?: string };
+            const parsed = JSON.parse(draft) as {
+              title?: string;
+              prompt?: string;
+              negativePrompt?: string;
+              characterProfileId?: string;
+              characterImageIds?: string[];
+            };
             setTitle(parsed.title ?? "");
             setPrompt(parsed.prompt ?? "");
             setNegativePrompt(parsed.negativePrompt ?? "");
+            await selectCharacter(
+              typeof parsed.characterProfileId === "string" ? parsed.characterProfileId : undefined,
+              Array.isArray(parsed.characterImageIds) ? parsed.characterImageIds.filter((id): id is string => typeof id === "string") : [],
+            );
+          } else if (sourceCharacterId) {
+            await selectCharacter(sourceCharacterId);
           }
         }
       } catch {
@@ -155,7 +198,7 @@ export function ImageHubWorkbench() {
       }
     }
     void initialize();
-  }, [sourceNoteId]);
+  }, [sourceCharacterId, sourceNoteId]);
 
   useEffect(() => {
     if (!activeJobs.length) {
@@ -208,6 +251,8 @@ export function ImageHubWorkbench() {
         height,
         quality,
         imageCount,
+        characterProfileId,
+        characterImageIds,
       }));
       references.forEach((file) => form.append("references", file));
       const response = await fetch("/api/v1/generations", { method: "POST", body: form });
@@ -315,7 +360,7 @@ export function ImageHubWorkbench() {
     }
   }
 
-  async function saveAsNote(job: GenerationJob) {
+  async function saveAsNote(job: GenerationJob, withoutCharacter = false) {
     const key = `save:${job.id}`;
     if (savedJobs.has(job.id) || !beginAction(key)) return;
     feedback(job.id, "正在保存为笔记…");
@@ -334,6 +379,7 @@ export function ImageHubWorkbench() {
           model: job.modelName,
           tags: ["AI 生成"],
           images,
+          characterProfiles: !withoutCharacter && job.characterProfile ? [{ id: job.characterProfile.id, role: "primary", sortOrder: 0 }] : [],
           parameters: { generationJobId: job.id, width: job.width, height: job.height, quality: job.quality },
         }),
       });
@@ -341,7 +387,15 @@ export function ImageHubWorkbench() {
       if (response.ok) {
         const text = body?.meta?.replayed ? "这条生成结果已经保存过，不会重复创建。" : "已保存为新的提示词笔记。";
         setSavedJobs((current) => new Set(current).add(job.id));
+        setCharacterSaveFallbacks((current) => {
+          const next = new Set(current);
+          next.delete(job.id);
+          return next;
+        });
         feedback(job.id, text);
+      } else if (!withoutCharacter && apiErrorCode(body) === "CHARACTER_PROFILE_NOT_FOUND") {
+        setCharacterSaveFallbacks((current) => new Set(current).add(job.id));
+        feedback(job.id, "关联的 AI Model 已被移入回收站或删除，笔记尚未创建。你可以移除失效的角色关联后再次保存。");
       } else {
         feedback(job.id, apiMessage(body, "保存笔记失败。"));
       }
@@ -460,8 +514,17 @@ export function ImageHubWorkbench() {
           </div>
 
           <div className="imagehub-references">
-            <div><strong>参考图片</strong><span>最多 4 张，每张不超过 10MB</span></div>
-            <label className="imagehub-upload"><input accept="image/jpeg,image/png,image/webp" multiple type="file" onChange={(event) => setReferences(Array.from(event.target.files ?? []).slice(0, 4))} /><span>＋ 选择参考图</span></label>
+            <div><strong>角色与参考图片</strong><span>AI Model 垫图与本地参考图合计最多 4 张</span></div>
+            <GenerationCharacterPicker
+              selectedProfileId={characterProfileId}
+              selectedImageIds={characterImageIds}
+              maxImages={Math.max(0, 4 - references.length)}
+              onChange={(profileId, imageIds) => {
+                setCharacterProfileId(profileId);
+                setCharacterImageIds(imageIds);
+              }}
+            />
+            <label className="imagehub-upload"><input accept="image/jpeg,image/png,image/webp" multiple type="file" onChange={(event) => setReferences(Array.from(event.target.files ?? []).slice(0, Math.max(0, 4 - characterImageIds.length)))} /><span>＋ 上传其他参考图</span></label>
             {referencePreviews.length ? <div className="imagehub-reference-grid">{referencePreviews.map(({ file, url }, index) => <figure key={`${file.name}-${file.lastModified}`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={url} alt={`参考图 ${index + 1}`} />
@@ -484,9 +547,10 @@ export function ImageHubWorkbench() {
                 <img src={asset.thumbnailUrl || asset.displayUrl} alt={`生成作品 ${index + 1}`} />
                 <figcaption><button type="button" onClick={() => void reverseFrom(asset)}>反推</button><button aria-busy={pendingActions.has(`download:${asset.id}`)} disabled={pendingActions.has(`download:${asset.id}`)} type="button" onClick={() => void downloadAsset(job, asset)}>{pendingActions.has(`download:${asset.id}`) ? "准备中…" : "下载"}</button>{sourceNoteId ? <button aria-busy={pendingActions.has(`cover:${asset.id}`)} disabled={pendingActions.has(`cover:${asset.id}`)} type="button" onClick={() => void attachAsCover(job, asset)}>{pendingActions.has(`cover:${asset.id}`) ? "设置中…" : "设为封面"}</button> : null}</figcaption>
               </figure>)}</div> : <div className="imagehub-placeholder"><span>{job.status === "failed" ? "!" : "◌"}</span><p>{job.errorMessage || "任务正在等待图像结果"}</p></div>}
+              {job.characterProfile ? <p className="imagehub-job__character">AI Model · {job.characterProfile.available ? <Link href={`/ai-models/${job.characterProfile.id}`}>{job.characterProfile.name}</Link> : <span>{job.characterProfile.name}（角色卡已删除）</span>} · {job.characterProfile.imageIds.length} 张角色垫图</p> : null}
               <p className="imagehub-job__prompt">{job.prompt}</p>
               {jobFeedback[job.id] ? <p className="imagehub-job__feedback" role="status">{jobFeedback[job.id]}</p> : null}
-              <footer>{activeStatuses.includes(job.status) ? <button aria-busy={pendingActions.has(`cancel:${job.id}`)} disabled={pendingActions.has(`cancel:${job.id}`)} type="button" onClick={() => void cancel(job.id)}>{pendingActions.has(`cancel:${job.id}`) ? "取消中…" : "取消任务"}</button> : null}{job.status === "succeeded" ? <button aria-busy={pendingActions.has(`save:${job.id}`)} disabled={pendingActions.has(`save:${job.id}`) || savedJobs.has(job.id)} type="button" onClick={() => void saveAsNote(job)}>{pendingActions.has(`save:${job.id}`) ? "保存中…" : savedJobs.has(job.id) ? "已保存" : "保存为笔记"}</button> : null}<button aria-busy={pendingActions.has(`copy:${job.id}`)} disabled={pendingActions.has(`copy:${job.id}`)} type="button" onClick={() => void copyPrompt(job)}>{pendingActions.has(`copy:${job.id}`) ? "复制中…" : "复制 Prompt"}</button>{!activeStatuses.includes(job.status) ? <button aria-busy={pendingActions.has(`delete:${job.id}`)} disabled={pendingActions.has(`delete:${job.id}`)} type="button" onClick={() => void removeHistory(job)}>{pendingActions.has(`delete:${job.id}`) ? "删除中…" : "删除记录"}</button> : null}</footer>
+              <footer>{activeStatuses.includes(job.status) ? <button aria-busy={pendingActions.has(`cancel:${job.id}`)} disabled={pendingActions.has(`cancel:${job.id}`)} type="button" onClick={() => void cancel(job.id)}>{pendingActions.has(`cancel:${job.id}`) ? "取消中…" : "取消任务"}</button> : null}{job.status === "succeeded" ? characterSaveFallbacks.has(job.id) ? <button aria-busy={pendingActions.has(`save:${job.id}`)} disabled={pendingActions.has(`save:${job.id}`) || savedJobs.has(job.id)} type="button" onClick={() => void saveAsNote(job, true)}>{pendingActions.has(`save:${job.id}`) ? "保存中…" : "移除角色关联后保存"}</button> : <button aria-busy={pendingActions.has(`save:${job.id}`)} disabled={pendingActions.has(`save:${job.id}`) || savedJobs.has(job.id)} type="button" onClick={() => void saveAsNote(job)}>{pendingActions.has(`save:${job.id}`) ? "保存中…" : savedJobs.has(job.id) ? "已保存" : "保存为笔记"}</button> : null}<button aria-busy={pendingActions.has(`copy:${job.id}`)} disabled={pendingActions.has(`copy:${job.id}`)} type="button" onClick={() => void copyPrompt(job)}>{pendingActions.has(`copy:${job.id}`) ? "复制中…" : "复制 Prompt"}</button>{!activeStatuses.includes(job.status) ? <button aria-busy={pendingActions.has(`delete:${job.id}`)} disabled={pendingActions.has(`delete:${job.id}`)} type="button" onClick={() => void removeHistory(job)}>{pendingActions.has(`delete:${job.id}`) ? "删除中…" : "删除记录"}</button> : null}</footer>
             </article>;
           })}</div> : <div className="imagehub-empty"><span>NO EXPOSURES YET</span><h3>还没有生成记录</h3><p>从左侧输入第一条提示词，任务会在这里持续更新。</p></div>}
         </section>

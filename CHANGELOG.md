@@ -4,6 +4,52 @@ All notable changes use the Keep a Changelog structure. Versions follow Semantic
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-08-06
+
+### Added
+
+- Added a first-class AI Model character asset library with role cards, intended uses, cover/primary images, up to twelve ordered reference images, archive, trash and guarded permanent deletion.
+- Added character Profile pages, linked-note waterfalls, prompt-card badges and many-to-many primary/supporting/reference note associations.
+- Added an ImageHub casting picker for one AI Model and up to four character references, immutable generation provenance and automatic character binding when saving generated work.
+- Added portable export format v2 for character profiles, images and note relations while retaining version-1 import compatibility.
+- Added an identity-adapter boundary for future provider-native character tokens, FaceID and LoRA workflows without coupling the current release to one provider.
+
+### Changed
+
+- Renamed the Settings tab to make service-model configuration distinct from AI Model character assets.
+- Raised the bundled Nginx request-body limit to 45 MB for four-reference ImageHub requests.
+- Generation quotas and stale-job reconciliation now use bounded indexed queries as job history grows.
+
+### Fixed
+
+- Preserved selected characters beyond the first 100 library results and across archive/trash state changes.
+- Made ImageHub explicitly offer an unlinked retry when a selected character becomes unavailable before note saving.
+- Made interrupted v2 imports safely resumable and rejected duplicate portable note IDs before any import mutation.
+- Closed generation preparation/cancellation races, retained legacy idempotency compatibility and guarded character deletion throughout the pre-queue window.
+
+### Security
+
+- Added owner-composite database constraints for note, character, generation and asset relationships.
+- Pinned validated DNS results for remote media sockets, revalidated every redirect and rejected private, reserved and IPv4-mapped destinations.
+
+## [1.4.2] - 2026-08-06
+
+### Fixed
+
+- Refreshed the lightbox image state when navigating between multi-image prompt notes.
+
+## [1.4.1] - 2026-08-02
+
+### Fixed
+
+- Isolated authentication rate limits by the client IP supplied by the configured trusted reverse proxy.
+
+## [1.4.0] - 2026-08-02
+
+### Added
+
+- Added the Dashboard overview with eight account metrics and a clickable per-tag note count table.
+
 ## [1.3.0] - 2026-07-23
 
 ### Added

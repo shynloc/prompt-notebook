@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { CharacterBadges } from "@/components/characters/character-badges";
 import { DefaultCover } from "./default-cover";
 import type { NoteView } from "./types";
 
@@ -73,6 +74,7 @@ export function NoteCard({ note, view, onOpen, onDeleted, onUpdated, selected = 
           <div className="tag-list" aria-label="提示词标签">
             {note.tags.map((tag) => <Link key={tag.id} href={`/tags/${tag.id}`}>{tag.name}</Link>)}
           </div>
+          <CharacterBadges compact profiles={note.characterProfiles ?? []} />
         </div>
         <footer className="prompt-card__actions">
           <button type="button" onClick={copyPrompt}>{copied ? "已复制" : "复制"}</button>

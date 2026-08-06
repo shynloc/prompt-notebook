@@ -13,6 +13,8 @@
 - 设置集中管理 AI 模型与图床连接，桌面侧栏保持简洁，分类页仍可独立深链访问。
 - 一键优化 Prompt、图片反推 Prompt，以及带持久化队列、直接文件下载、保存防重和可删除生成历史的专业 AI ImageHub。
 - 提示词百科支持 AI 分析完整 Prompt，按类别提炼原文词组，经人工选择、编辑和去重后批量收录。
+- AI Model / AI 模特资产库：保存角色设定、用途、封面、主图和多视角备用图；可与提示词绑定，在角色 Profile 中查看关联作品。
+- AI ImageHub 可从角色卡中选择一位模特及最多四张垫图，生成历史保留角色快照；角色资产接口已为未来 LoRA、FaceID 等身份引擎预留适配层。
 - AI 请求超时可通过部署环境配置；图片超时不会盲目重试，供应商错误与请求 ID 会在脱敏后展示。
 - GPT Image 2 原生尺寸：1:1、4:3、3:4、3:2、2:3、16:9、9:16，支持 1K、2K、最高 4K 与 auto/low/medium/high 质量。
 - Manifest V3 Chrome 扩展：选中文字、右键或点击图标即可编辑并保存到自己的服务器。
@@ -34,7 +36,7 @@ cp deploy/.env.production.example .env
 ./scripts/deploy-production.sh
 ```
 
-将 [Nginx 示例](deploy/nginx/prompt-notebook.conf.example)复制到宿主机并替换域名、证书路径。确认：
+将 [Nginx 示例](deploy/nginx/prompt-notebook.conf.example)复制到宿主机并替换域名、证书路径。示例已将请求体上限设为 45 MB，以容纳 ImageHub 的四张 10 MB 参考图。确认：
 
 ```bash
 node scripts/smoke-production.mjs https://prompts.example.com
@@ -47,10 +49,13 @@ node scripts/smoke-production.mjs https://prompts.example.com
 1. 打开部署后的站点，注册并登录。
 2. 进入“设置 → 图床”，填写兼容图床上传端点和 Token，保存并测试。
 3. 进入“设置 → AI 模型”，添加模型 API Base URL、API Key、Model ID，并分别指定提示词优化、词库分析、生图和反推模型；词库分析也可以继承提示词优化模型。
-4. 新建提示词、进入 AI ImageHub 测试生成，或在提示词百科中分析并收录优秀 Prompt 片段。
-5. 安装 Chrome 扩展并连接自己的服务器。
+4. 按需进入“AI Model”创建角色卡、上传主图与备用图，并在提示词或 AI ImageHub 中复用。
+5. 新建提示词、进入 AI ImageHub 测试生成，或在提示词百科中分析并收录优秀 Prompt 片段。
+6. 安装 Chrome 扩展并连接自己的服务器。
 
 图床兼容接口接收 `multipart/form-data` 的 `file`、`path` 字段及 `X-Auth-Token` 请求头；JSON 响应可返回 `url`、`publicUrl`、`href`、`location`、`key` 或 `path`。
+
+Prompt Notebook 只保存图床 URL 和元数据。当前通用图床协议没有统一的删除接口，因此永久删除 AI Model 或生成历史不会自动删除图床原文件；请在自己的图床中管理这些文件，数据库备份也应与图床备份配套。
 
 ## Chrome 扩展
 
@@ -120,6 +125,7 @@ npm run test:e2e
 
 - 模型 Key 与图床 Token 使用 AES-256-GCM 按用户、用途绑定加密，API 只返回掩码。
 - 自定义出站端点只允许标准端口的公网 HTTPS，并进行 DNS 固定、私网地址拒绝、响应限额和禁止跳转。
+- 网页图片和角色参考图在每次请求及每次跳转时重新校验公网地址并固定已验证 IP，阻止 DNS 重绑定绕过内网限制。
 - 账户、笔记、标签、图片引用、模型、图床和扩展设备均按所有者隔离。
 - 不要提交 `.env`、数据库备份、服务器地址、SSH Key 或真实用户数据。
 

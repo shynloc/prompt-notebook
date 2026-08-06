@@ -140,6 +140,7 @@ export const aiGenerationJobs = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     modelProfileId: uuid("model_profile_id"),
+    characterProfileId: uuid("character_profile_id"),
     idempotencyKey: text("idempotency_key").notNull(),
     requestFingerprint: text("request_fingerprint").notNull(),
     kind: text("kind").default("text_to_image").notNull(),
@@ -188,6 +189,15 @@ export const aiGenerationJobs = pgTable(
     index("ai_generation_jobs_stale_running_idx")
       .on(table.heartbeatAt)
       .where(sql`${table.status} = 'running'`),
+    index("ai_generation_jobs_stale_preparing_idx")
+      .on(table.heartbeatAt)
+      .where(sql`${table.status} = 'preparing'`),
+    index("ai_generation_jobs_queued_reconcile_idx")
+      .on(table.createdAt)
+      .where(sql`${table.status} = 'queued'`),
+    index("ai_generation_jobs_active_character_idx")
+      .on(table.userId, table.characterProfileId)
+      .where(sql`${table.characterProfileId} is not null and ${table.status} in ('preparing', 'queued', 'running', 'cancel_requested')`),
     check("ai_generation_jobs_kind_check", sql`${table.kind} in ('text_to_image', 'image_to_image')`),
     check(
       "ai_generation_jobs_status_check",
@@ -220,6 +230,7 @@ export const aiGenerationAssets = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    unique("ai_generation_assets_id_job_user_unique").on(table.id, table.jobId, table.userId),
     foreignKey({
       columns: [table.jobId, table.userId],
       foreignColumns: [aiGenerationJobs.id, aiGenerationJobs.userId],

@@ -8,6 +8,10 @@ import {
   PromptOptimizationDialog,
   type PromptOptimizationState,
 } from "@/components/ai/prompt-optimization-dialog";
+import {
+  CharacterAssociationPicker,
+  type CharacterAssociationValue,
+} from "@/components/characters/character-association-picker";
 import { ImagePicker } from "@/components/media/image-picker";
 import type { NoteImage, NoteView } from "@/components/notes/types";
 import { TemplatePicker } from "@/components/productivity/template-picker";
@@ -35,7 +39,7 @@ function apiMessage(body: unknown, fallback: string) {
     : message;
 }
 
-export function PromptEditor({ initial, seed }: { initial?: NoteView; seed?: NoteView }) {
+export function PromptEditor({ initial, seed, initialCharacterId }: { initial?: NoteView; seed?: NoteView; initialCharacterId?: string }) {
   const router = useRouter();
   const { data: session } = useSession();
   const promptRef = useRef<HTMLTextAreaElement>(null);
@@ -51,6 +55,11 @@ export function PromptEditor({ initial, seed }: { initial?: NoteView; seed?: Not
   const [tagDraft, setTagDraft] = useState("");
   const [tagOptions, setTagOptions] = useState<TagOption[]>([]);
   const [images, setImages] = useState<NoteImage[]>(initial?.images ?? seed?.images ?? []);
+  const [characterProfiles, setCharacterProfiles] = useState<CharacterAssociationValue>(() => {
+    const associated = initial?.characterProfiles ?? seed?.characterProfiles ?? [];
+    if (associated.length) return associated.map((profile, index) => ({ id: profile.id, role: profile.role, sortOrder: index }));
+    return initialCharacterId ? [{ id: initialCharacterId, role: "primary", sortOrder: 0 }] : [];
+  });
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [dirty, setDirty] = useState(false);
@@ -61,8 +70,8 @@ export function PromptEditor({ initial, seed }: { initial?: NoteView; seed?: Not
   const [optimizationUndo, setOptimizationUndo] = useState<{ before: string; after: string } | null>(null);
   const draftKey = session?.user.id ? `${session.user.id}:${initial?.id ?? "new"}` : null;
   const draftPayload = useMemo<PromptDraftPayload>(
-    () => ({ title, prompt, negativePrompt, sourceUrl, sourceTitle, tags, images }),
-    [images, negativePrompt, prompt, sourceTitle, sourceUrl, tags, title],
+    () => ({ title, prompt, negativePrompt, sourceUrl, sourceTitle, tags, images, characterProfiles }),
+    [characterProfiles, images, negativePrompt, prompt, sourceTitle, sourceUrl, tags, title],
   );
 
   useEffect(() => { void fetch("/api/v1/tags").then((response) => response.ok ? response.json() : null).then((body) => body && setTagOptions(body.data)); }, []);
@@ -211,6 +220,7 @@ export function PromptEditor({ initial, seed }: { initial?: NoteView; seed?: Not
     setSourceTitle(recoveredDraft.sourceTitle);
     setTags(recoveredDraft.tags);
     setImages(recoveredDraft.images);
+    setCharacterProfiles(recoveredDraft.characterProfiles ?? []);
     setRecoveredDraft(null);
     setDirty(true);
     setLocalState("saved");
@@ -236,7 +246,7 @@ export function PromptEditor({ initial, seed }: { initial?: NoteView; seed?: Not
     event?.preventDefault();
     if (!title.trim() || !prompt.trim()) { setMessage("请填写标题和 Prompt。"); return; }
     setPending(true); setMessage("");
-    const body = { title, prompt, negativePrompt: negativePrompt || null, sourceUrl: sourceUrl || null, sourceTitle: sourceTitle || null, tags, images, ...(initial ? { version: initial.version } : {}) };
+    const body = { title, prompt, negativePrompt: negativePrompt || null, sourceUrl: sourceUrl || null, sourceTitle: sourceTitle || null, tags, images, characterProfiles, ...(initial ? { version: initial.version } : {}) };
     try {
       const response = await fetch(initial ? `/api/v1/notes/${initial.id}` : "/api/v1/notes", { method: initial ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const result = await response.json();
@@ -255,7 +265,14 @@ export function PromptEditor({ initial, seed }: { initial?: NoteView; seed?: Not
   }
 
   function openImageHub() {
-    sessionStorage.setItem("prompt-notebook:imagehub-draft", JSON.stringify({ title, prompt, negativePrompt }));
+    const primaryCharacter = characterProfiles.find((character) => character.role === "primary") ?? characterProfiles[0];
+    sessionStorage.setItem("prompt-notebook:imagehub-draft", JSON.stringify({
+      title,
+      prompt,
+      negativePrompt,
+      characterProfileId: primaryCharacter?.id,
+      characterImageIds: [],
+    }));
     router.push("/imagehub");
   }
 
@@ -282,6 +299,7 @@ export function PromptEditor({ initial, seed }: { initial?: NoteView; seed?: Not
         <label className="field"><span>负面提示词（可选）</span><textarea className="negative-field" name="negativePrompt" value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} maxLength={100000} placeholder="blurry, low quality, watermark…" /></label>
         <details className="source-fields" open={Boolean(sourceUrl)}><summary>来源信息（可选）</summary><div className="source-fields__grid"><label className="field"><span>来源名称</span><input value={sourceTitle} onChange={(event) => setSourceTitle(event.target.value)} maxLength={500} placeholder="网页、帖子或作者名称" /></label><label className="field"><span>来源链接</span><input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} maxLength={4000} type="url" placeholder="https://example.com/prompt" /></label></div></details>
         <div className="field"><span>标签</span><div className="tag-input">{tags.map((tag) => <button type="button" key={tag} onClick={() => { setTags(tags.filter((item) => item !== tag)); setDirty(true); }}>{tag}<span>×</span></button>)}<input aria-label="标签" list="tag-suggestions" value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} onKeyDown={tagKey} onBlur={() => tagDraft && addTag()} placeholder={tags.length ? "继续添加…" : "输入标签，按回车添加"} maxLength={40} /><datalist id="tag-suggestions">{tagOptions.map((tag) => <option key={tag.id} value={tag.name} />)}</datalist></div><small>最多 20 个标签；点击已添加标签可移除。</small></div>
+        <CharacterAssociationPicker initialProfiles={initial?.characterProfiles ?? seed?.characterProfiles ?? []} value={characterProfiles} onChange={(next) => { setCharacterProfiles(next); setDirty(true); }} />
         <ImagePicker images={images} onChange={(next) => { setImages(next); setDirty(true); }} />
         {message ? <p className="form-message" role="alert">{message}</p> : null}
         <div className="editor-actions"><button className="primary-action" disabled={pending} type="submit">{pending ? "正在保存…" : "保存提示词"}</button><button type="button" onClick={openImageHub}>在 AI ImageHub 测试</button><button type="button" onClick={() => navigator.clipboard.writeText(prompt)}>复制 Prompt</button><Link href="/notes">取消</Link><span>⌘/Ctrl + S 保存</span></div>

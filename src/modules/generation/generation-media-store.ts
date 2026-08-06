@@ -1,6 +1,5 @@
-import { MAX_IMAGE_BYTES, inspectImage } from "@/modules/media/image-policy";
+import { downloadRemoteImage, inspectImage } from "@/modules/media/image-policy";
 import { MediaService } from "@/modules/media/media-service";
-import { secureOutboundFetch } from "@/modules/ai/secure-outbound-fetch";
 
 export type GenerationAssetRole = "reference" | "result";
 
@@ -15,6 +14,10 @@ export interface StoredGenerationAsset {
   sizeBytes: number;
 }
 
+export interface ReadableGenerationAsset extends Omit<StoredGenerationAsset, "storageProvider"> {
+  storageProvider: "picbed" | "external";
+}
+
 export interface GenerationMediaStore {
   upload(
     userId: string,
@@ -23,27 +26,7 @@ export interface GenerationMediaStore {
     ordinal: number,
     data: Buffer,
   ): Promise<StoredGenerationAsset>;
-  read(asset: StoredGenerationAsset): Promise<Buffer>;
-}
-
-async function readLimited(response: Response) {
-  if (!response.ok || !response.body) throw new Error("Stored generation asset is unavailable");
-  const declared = Number(response.headers.get("content-length") ?? 0);
-  if (Number.isFinite(declared) && declared > MAX_IMAGE_BYTES) throw new Error("Stored generation asset is too large");
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX_IMAGE_BYTES) {
-      await reader.cancel();
-      throw new Error("Stored generation asset is too large");
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks);
+  read(asset: ReadableGenerationAsset): Promise<Buffer>;
 }
 
 export class PicbedGenerationMediaStore implements GenerationMediaStore {
@@ -54,13 +37,7 @@ export class PicbedGenerationMediaStore implements GenerationMediaStore {
   }
 
   async read(asset: StoredGenerationAsset) {
-    if (asset.storageProvider !== "picbed") throw new Error("Unsupported generation storage provider");
-    const response = await secureOutboundFetch(new URL(asset.displayUrl), {
-      method: "GET",
-      headers: { accept: "image/jpeg,image/png,image/webp" },
-      signal: AbortSignal.timeout(20_000),
-    });
-    const data = await readLimited(response);
+    const data = await downloadRemoteImage(asset.displayUrl);
     await inspectImage(data);
     return data;
   }

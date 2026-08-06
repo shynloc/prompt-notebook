@@ -1,4 +1,10 @@
-import { downloadRemoteImage, fetchRemoteResource, inspectImage, MAX_IMAGE_BYTES } from "./image-policy";
+import {
+  downloadRemoteImage,
+  fetchRemoteResource,
+  inspectImage,
+  MAX_IMAGE_BYTES,
+  type RemoteResourceDependencies,
+} from "./image-policy";
 
 export const MAX_HTML_BYTES = 1024 * 1024;
 const MAX_CANDIDATES = 8;
@@ -75,12 +81,16 @@ async function validImage(data: Buffer) {
   }
 }
 
-export async function resolveWebImage(value: string) {
+export async function resolveWebImage(
+  value: string,
+  dependencies: RemoteResourceDependencies = {},
+) {
   const resource = await fetchRemoteResource(value, {
     accept: "image/jpeg,image/png,image/webp,text/html,application/xhtml+xml",
     maxBytes: MAX_IMAGE_BYTES,
     htmlMaxBytes: MAX_HTML_BYTES,
     userAgent: pageUserAgent(value),
+    ...dependencies,
   });
   if (await validImage(resource.data)) return resource.data;
 
@@ -92,7 +102,7 @@ export async function resolveWebImage(value: string) {
 
   for (const candidate of candidates) {
     try {
-      const data = await downloadRemoteImage(candidate);
+      const data = await downloadRemoteImage(candidate, dependencies);
       if (await validImage(data)) return data;
     } catch {
       // Candidate URLs are untrusted. Continue to the next declared preview.

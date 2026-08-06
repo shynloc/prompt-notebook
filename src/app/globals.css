@@ -11,6 +11,7 @@
 @import "../components/settings/settings.css";
 @import "../components/terms/term-analysis.css";
 @import "../components/dashboard/dashboard.css";
+@import "../components/characters/character-profiles.css";
 
 * {
   box-sizing: border-box;

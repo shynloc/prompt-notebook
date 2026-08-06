@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { noteCharacterAssociationsSchema } from "@/modules/characters/character-schema";
+
 export const tagNameSchema = z
   .string()
   .trim()
@@ -32,6 +34,7 @@ const noteFields = {
   archivedAt: z.coerce.date().nullable().optional(),
   tags: z.array(tagNameSchema).max(20),
   images: z.array(imageInputSchema).max(8),
+  characterProfiles: noteCharacterAssociationsSchema,
 };
 
 export const createNoteSchema = z.object({
@@ -39,6 +42,7 @@ export const createNoteSchema = z.object({
   ...noteFields,
   tags: noteFields.tags.default([]),
   images: noteFields.images.default([]),
+  characterProfiles: noteFields.characterProfiles.default([]),
 });
 
 export const updateNoteSchema = z
@@ -57,6 +61,7 @@ export const updateNoteSchema = z
     archivedAt: noteFields.archivedAt.optional(),
     tags: noteFields.tags.optional(),
     images: noteFields.images.optional(),
+    characterProfiles: noteFields.characterProfiles.optional(),
   })
   .refine((value) => Object.keys(value).some((key) => key !== "version"), {
     message: "At least one note field is required",
@@ -70,6 +75,7 @@ export const listNotesSchema = z.object({
   q: z.string().trim().max(200).optional(),
   tagId: z.uuid().optional(),
   projectId: z.uuid().optional(),
+  characterProfileId: z.uuid().optional(),
   sourceHost: z.string().trim().max(253).regex(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i).optional(),
   dateFrom: z.coerce.date().optional(),
   dateTo: z.coerce.date().optional(),

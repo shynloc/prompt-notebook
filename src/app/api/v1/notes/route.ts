@@ -20,6 +20,7 @@ export async function GET(request: Request) {
       q: url.searchParams.get("q") ?? undefined,
       tagId: url.searchParams.get("tagId") ?? undefined,
       projectId: url.searchParams.get("projectId") ?? undefined,
+      characterProfileId: url.searchParams.get("characterProfileId") ?? undefined,
       sourceHost: url.searchParams.get("sourceHost") ?? undefined,
       dateFrom: url.searchParams.get("dateFrom") ?? undefined,
       dateTo: url.searchParams.get("dateTo") ?? undefined,

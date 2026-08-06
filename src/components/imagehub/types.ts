@@ -29,6 +29,13 @@ export interface GenerationJob {
   errorMessage: string | null;
   createdAt: string;
   assets: GenerationAsset[];
+  characterProfile?: {
+    id: string;
+    name: string;
+    version: number;
+    imageIds: string[];
+    available: boolean;
+  } | null;
 }
 
 export const activeStatuses: GenerationStatus[] = ["preparing", "queued", "running", "cancel_requested"];

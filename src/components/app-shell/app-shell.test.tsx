@@ -10,7 +10,7 @@ describe("AppShell", () => {
       name: "桌面主导航",
     });
 
-    for (const label of ["仪表盘", "全部提示词", "收藏", "归档", "回收站", "分享管理", "标签", "提示词百科", "设置", "新建 Prompt"]) {
+    for (const label of ["仪表盘", "全部提示词", "收藏", "归档", "回收站", "分享管理", "标签", "提示词百科", "设置", "AI Model", "新建 Prompt"]) {
       expect(within(navigation).getByRole("link", { name: label })).toBeVisible();
     }
     expect(within(navigation).queryByRole("link", { name: "AI 助手" })).not.toBeInTheDocument();
@@ -24,7 +24,7 @@ describe("AppShell", () => {
       name: "移动主导航",
     });
 
-    for (const label of ["作品库", "收藏", "新建", "词库", "我的"]) {
+    for (const label of ["作品库", "收藏", "AI 模特", "新建", "词库", "我的"]) {
       expect(within(navigation).getByRole("link", { name: label })).toBeVisible();
     }
   });

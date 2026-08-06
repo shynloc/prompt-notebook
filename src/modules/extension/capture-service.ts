@@ -56,6 +56,7 @@ export class ExtensionCaptureService {
         title: input.title,
         prompt: input.prompt,
         tags: input.tags,
+        characterProfiles: [],
         images,
         sourceUrl: input.sourceUrl,
         sourceTitle: input.sourceTitle ?? null,
@@ -83,4 +84,3 @@ export class ExtensionCaptureService {
     return existing.response as { note: Record<string, unknown>; imageWarnings: Array<{ url: string; message: string }> };
   }
 }
-

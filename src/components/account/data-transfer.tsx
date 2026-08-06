@@ -2,7 +2,17 @@
 
 import { useState, type ChangeEvent } from "react";
 
-interface Preview { notes: number; newNotes: number; existingNotes: number; customTerms: number; fingerprint: string }
+interface Preview {
+  notes: number;
+  newNotes: number;
+  existingNotes: number;
+  characterProfiles: number;
+  newCharacterProfiles: number;
+  existingCharacterProfiles: number;
+  characterAssociations: number;
+  customTerms: number;
+  fingerprint: string;
+}
 
 export function DataTransfer() {
   const [document, setDocument] = useState("");
@@ -23,11 +33,11 @@ export function DataTransfer() {
   }
 
   async function commit() {
-    if (!preview || !window.confirm(`将导入 ${preview.newNotes} 条新笔记，并跳过 ${preview.existingNotes} 条已有笔记。继续吗？`)) return;
+    if (!preview || !window.confirm(`将导入 ${preview.newNotes} 条新笔记和 ${preview.newCharacterProfiles} 个新 AI Model，并跳过已存在的数据。继续吗？`)) return;
     setPending(true); setMessage("");
     const response = await fetch("/api/v1/account/import/commit", { method: "POST", headers: { "content-type": "application/json" }, body: document });
     const result = await response.json(); setPending(false);
-    if (response.ok) { setMessage(`导入完成：新增 ${result.data.imported} 条，跳过 ${result.data.skipped} 条。`); setPreview(null); }
+    if (response.ok) { setMessage(`导入完成：新增 ${result.data.imported} 条笔记、${result.data.importedCharacterProfiles ?? 0} 个 AI Model；跳过 ${result.data.skipped} 条笔记、${result.data.skippedCharacterProfiles ?? 0} 个 AI Model。`); setPreview(null); }
     else setMessage(result.error?.message ?? "导入失败，请稍后重试。");
   }
 
@@ -35,7 +45,7 @@ export function DataTransfer() {
     <div><span className="section-kicker">PORTABILITY</span><h3 id="data-transfer-title">备份与迁移</h3><p>导出完整 JSON 备份，或先预览再导入。重复导入会按笔记 ID 自动跳过，不会生成副本。</p></div>
     <div className="data-transfer__actions"><a className="primary-action" href="/api/v1/account/export">导出全部数据</a><label className="file-action">选择 JSON 备份<input accept="application/json,.json" disabled={pending} onChange={choose} type="file" /></label></div>
     {pending ? <p role="status">正在处理…</p> : null}
-    {preview ? <div className="import-preview" role="status"><strong>导入预览</strong><span>新笔记 {preview.newNotes} 条 · 已存在 {preview.existingNotes} 条 · 自定义词汇 {preview.customTerms} 条</span><small>校验码 {preview.fingerprint}</small><button className="primary-action" type="button" onClick={commit}>确认导入</button></div> : null}
+    {preview ? <div className="import-preview" role="status"><strong>导入预览</strong><span>新笔记 {preview.newNotes} 条 · 已存在 {preview.existingNotes} 条 · 新 AI Model {preview.newCharacterProfiles} 个 · 已存在 {preview.existingCharacterProfiles} 个 · 角色关联 {preview.characterAssociations} 条 · 自定义词汇 {preview.customTerms} 条</span><small>校验码 {preview.fingerprint}</small><button className="primary-action" type="button" onClick={commit}>确认导入</button></div> : null}
     {message ? <p className="form-message" role="status">{message}</p> : null}
   </section>;
 }

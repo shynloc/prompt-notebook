@@ -13,6 +13,7 @@ const note: NoteView = {
   version: 1,
   updatedAt: "2026-07-22T00:00:00.000Z",
   tags: [],
+  characterProfiles: [],
   images: [],
   coverImage: null,
 };
