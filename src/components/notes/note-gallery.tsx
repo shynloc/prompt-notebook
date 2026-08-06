@@ -107,7 +107,7 @@ export function NoteGallery({ tagId, view = "active", heading = "提示词作品
         {state === "ready" ? notes.map((note) => <NoteCard key={note.id} note={note} view={view} onOpen={() => setSelected(note)} onDeleted={deleted} onUpdated={updated} selected={selectedIds.includes(note.id)} onSelect={view === "trash" ? undefined : (checked) => setSelectedIds((ids) => checked ? [...new Set([...ids, note.id])] : ids.filter((id) => id !== note.id))} />) : null}
         {state === "ready" && nextCursor ? <button className="load-more" type="button" onClick={() => void load(nextCursor)}>加载更多</button> : null}
       </div>
-      {selected ? <NoteLightbox note={selected} view={view} onClose={() => setSelected(null)} onDeleted={deleted} onUpdated={updated} /> : null}
+      {selected ? <NoteLightbox key={selected.id} note={selected} view={view} onClose={() => setSelected(null)} onDeleted={deleted} onUpdated={updated} /> : null}
       {recentlyDeleted ? <div className="undo-toast" role="status"><span>已将“{recentlyDeleted.note.title}”移到回收状态</span><button type="button" onClick={restore}>撤销删除</button><button type="button" onClick={() => setRecentlyDeleted(null)} aria-label="关闭提示">×</button></div> : null}
     </section>
   );

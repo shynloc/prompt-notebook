@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { DefaultCover } from "./default-cover";
 import { HistoryPanel } from "./history-panel";
@@ -13,12 +13,24 @@ export function NoteLightbox({ note, view, onClose, onDeleted, onUpdated }: { no
   const panelRef = useRef<HTMLDivElement>(null);
   const [imageIndex, setImageIndex] = useState(0);
   const [imageFailed, setImageFailed] = useState(false);
+  const [imageLoading, setImageLoading] = useState(true);
   const image = note.images[imageIndex] ?? null;
+
+  const moveImage = useCallback((direction: -1 | 1) => {
+    if (note.images.length < 2) return;
+    setImageFailed(false);
+    setImageLoading(true);
+    setImageIndex((current) => (current + direction + note.images.length) % note.images.length);
+  }, [note.images.length]);
 
   useEffect(() => {
     closeRef.current?.focus();
     function escape(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
+      const target = event.target as HTMLElement | null;
+      const isEditing = target?.matches("input, textarea, select, [contenteditable='true']");
+      if (!isEditing && event.key === "ArrowLeft") { event.preventDefault(); moveImage(-1); }
+      if (!isEditing && event.key === "ArrowRight") { event.preventDefault(); moveImage(1); }
       if (event.key === "Tab") {
         const focusable = panelRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])');
         if (!focusable?.length) return;
@@ -30,7 +42,7 @@ export function NoteLightbox({ note, view, onClose, onDeleted, onUpdated }: { no
     document.addEventListener("keydown", escape);
     document.body.style.overflow = "hidden";
     return () => { document.removeEventListener("keydown", escape); document.body.style.overflow = ""; };
-  }, [onClose]);
+  }, [moveImage, onClose]);
 
   async function remove() {
     if (!window.confirm(`确定删除“${note.title}”吗？`)) return;
@@ -52,15 +64,23 @@ export function NoteLightbox({ note, view, onClose, onDeleted, onUpdated }: { no
     <div className="lightbox" role="dialog" aria-modal="true" aria-labelledby="lightbox-title" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
       <div ref={panelRef} className="lightbox__panel">
         <button ref={closeRef} className="lightbox__close" type="button" onClick={onClose} aria-label="关闭预览">×</button>
-        <div className="lightbox__media">
+        <div className="lightbox__media" aria-busy={imageLoading && Boolean(image)}>
           {image && !imageFailed ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={image.displayUrl} alt={note.title} onError={() => setImageFailed(true)} />
+            <img
+              key={image.id ?? `${imageIndex}:${image.displayUrl}`}
+              src={image.displayUrl}
+              alt={note.title}
+              draggable={false}
+              onLoad={() => setImageLoading(false)}
+              onError={() => { setImageLoading(false); setImageFailed(true); }}
+            />
           ) : <DefaultCover />}
-          {note.images.length > 1 ? <div className="lightbox__pager">
-            <button type="button" onClick={() => { setImageFailed(false); setImageIndex((imageIndex - 1 + note.images.length) % note.images.length); }}>上一张</button>
-            <span>{imageIndex + 1} / {note.images.length}</span>
-            <button type="button" onClick={() => { setImageFailed(false); setImageIndex((imageIndex + 1) % note.images.length); }}>下一张</button>
+          {image && imageLoading && !imageFailed ? <span className="lightbox__image-status" role="status">正在载入第 {imageIndex + 1} 张…</span> : null}
+          {note.images.length > 1 ? <div className="lightbox__pager" role="group" aria-label="效果图导航">
+            <button type="button" aria-label="上一张" onClick={() => moveImage(-1)}>← 上一张</button>
+            <span aria-live="polite">{imageIndex + 1} / {note.images.length}</span>
+            <button type="button" aria-label="下一张" onClick={() => moveImage(1)}>下一张 →</button>
           </div> : null}
         </div>
         <div className="lightbox__details">

@@ -59,3 +59,73 @@ test("imports a web page image without submitting or leaving the editor", async 
   await expect(page).toHaveURL("/notes/new");
   expect(noteCreates).toBe(0);
 });
+
+test("switches every artwork in a multi-image note preview", async ({ page }) => {
+  const artwork = (label: string, color: string) => `data:image/svg+xml,${encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="900" height="1200">
+      <rect width="100%" height="100%" fill="${color}" />
+      <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" font-size="96" fill="white">${label}</text>
+    </svg>
+  `)}`;
+  const images = [
+    ["first", "#b8322c"],
+    ["second", "#1d6c54"],
+    ["third", "#2f4f8f"],
+  ].map(([label, color], index) => ({
+    id: `image-${index + 1}`,
+    storageProvider: "external",
+    objectKey: `multi-image-${index + 1}.svg`,
+    displayUrl: artwork(label, color),
+    thumbnailUrl: artwork(label, color),
+    mimeType: "image/png",
+    width: 900,
+    height: 1200,
+    sizeBytes: 1024,
+  }));
+
+  await page.route("**/api/v1/notes?**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: [{
+          id: "multi-image-note",
+          title: "Multi-image regression note",
+          prompt: "A prompt with three distinct generated artworks.",
+          negativePrompt: null,
+          favorite: false,
+          archivedAt: null,
+          deletedAt: null,
+          version: 1,
+          updatedAt: "2026-08-06T00:00:00.000Z",
+          tags: [],
+          images,
+          coverImage: images[0],
+        }],
+        meta: { nextCursor: null },
+      }),
+    });
+  });
+
+  await page.goto("/notes");
+  await page.getByRole("button", { name: "预览 Multi-image regression note" }).click();
+
+  const dialog = page.getByRole("dialog");
+  const currentImage = dialog.getByRole("img", { name: "Multi-image regression note" });
+  await expect(currentImage).toHaveAttribute("src", images[0].displayUrl);
+  await expect(dialog.getByText("1 / 3", { exact: true })).toBeVisible();
+
+  await currentImage.evaluate((element) => element.setAttribute("data-original-node", "true"));
+  await dialog.getByRole("button", { name: "下一张" }).click();
+  await expect(currentImage).toHaveAttribute("src", images[1].displayUrl);
+  await expect(currentImage).not.toHaveAttribute("data-original-node");
+  await expect(dialog.getByText("2 / 3", { exact: true })).toBeVisible();
+
+  await page.keyboard.press("ArrowRight");
+  await expect(currentImage).toHaveAttribute("src", images[2].displayUrl);
+  await expect(dialog.getByText("3 / 3", { exact: true })).toBeVisible();
+
+  await dialog.getByRole("button", { name: "下一张" }).click();
+  await expect(currentImage).toHaveAttribute("src", images[0].displayUrl);
+  await expect(dialog.getByText("1 / 3", { exact: true })).toBeVisible();
+});

@@ -41,9 +41,11 @@
 .lightbox__panel { background: var(--color-paper); border: 2px solid var(--color-border); box-shadow: 9px 11px 0 rgb(0 0 0 / 60%); display: grid; max-height: calc(100dvh - 2rem); max-width: 76rem; overflow: auto; position: relative; width: 100%; }
 .lightbox__close { align-items: center; background: var(--color-paper-strong); border: 2px solid var(--color-border); cursor: pointer; display: flex; font-size: 1.6rem; height: 2.7rem; justify-content: center; position: absolute; right: .7rem; top: .7rem; width: 2.7rem; z-index: 2; }
 .lightbox__media { background: #211f1c; min-height: 20rem; position: relative; }
-.lightbox__media > img { height: 100%; inset: 0; object-fit: contain; position: absolute; width: 100%; }
-.lightbox__pager { align-items: center; background: rgb(0 0 0 / 68%); bottom: .7rem; color: white; display: flex; gap: .7rem; left: 50%; padding: .35rem; position: absolute; transform: translateX(-50%); }
-.lightbox__pager button { background: white; border: 0; cursor: pointer; padding: .35rem .55rem; }
+.lightbox__media > img { animation: lightbox-image-enter 180ms ease-out; height: 100%; inset: 0; object-fit: contain; position: absolute; width: 100%; }
+.lightbox__image-status { background: rgb(0 0 0 / 72%); color: white; font-family: var(--font-mono); font-size: .68rem; left: 50%; padding: .4rem .6rem; position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 2; }
+.lightbox__pager { align-items: center; background: rgb(0 0 0 / 72%); bottom: .7rem; color: white; display: flex; gap: .7rem; left: 50%; padding: .35rem; position: absolute; transform: translateX(-50%); z-index: 3; }
+.lightbox__pager button { background: white; border: 0; color: var(--color-ink); cursor: pointer; font-size: .72rem; font-weight: 800; min-height: 2rem; min-width: 5rem; padding: .35rem .55rem; white-space: nowrap; }
+@keyframes lightbox-image-enter { from { opacity: .2; } to { opacity: 1; } }
 .lightbox__details { display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; padding: clamp(1.5rem, 4vw, 3rem); }
 .lightbox__details h2 { font-family: var(--font-serif); font-size: clamp(2rem, 4vw, 3.2rem); line-height: 1; margin: .6rem 0 0; }
 .lightbox__details h3 { font-size: .8rem; margin: 0 0 .4rem; text-transform: uppercase; }
