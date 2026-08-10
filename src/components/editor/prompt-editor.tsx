@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 
 import {
   PromptOptimizationDialog,
+  type PromptOptimizationRetryOptions,
   type PromptOptimizationState,
 } from "@/components/ai/prompt-optimization-dialog";
 import {
@@ -131,7 +132,7 @@ export function PromptEditor({ initial, seed, initialCharacterId }: { initial?: 
     requestAnimationFrame(() => { const caret = start + separator.length + value.length; field.focus(); field.setSelectionRange(caret, caret); });
   }
 
-  async function requestOptimization(sourcePrompt = prompt) {
+  async function requestOptimization(sourcePrompt = prompt, options: PromptOptimizationRetryOptions = {}) {
     const originalPrompt = sourcePrompt;
     if (!originalPrompt.trim()) {
       setMessage("请先输入需要优化的 Prompt。");
@@ -154,7 +155,14 @@ export function PromptEditor({ initial, seed, initialCharacterId }: { initial?: 
       const response = await fetch("/api/v1/ai/optimize", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt: originalPrompt }),
+        body: JSON.stringify({
+          prompt: originalPrompt,
+          context: options.context ?? "auto",
+          ...(options.requestedModules ? { requestedModules: options.requestedModules } : {}),
+          hints: {
+            hasAiModel: characterProfiles.length > 0,
+          },
+        }),
         signal: controller.signal,
       });
       const body = await response.json().catch(() => null);
@@ -173,6 +181,7 @@ export function PromptEditor({ initial, seed, initialCharacterId }: { initial?: 
         originalPrompt,
         optimizedPrompt: body.data.optimizedPrompt,
         modelName: body.data.model.name,
+        structure: body.data.structure,
       });
     } catch (error) {
       if (controller.signal.aborted || sequence !== optimizationSequenceRef.current) return;
@@ -311,7 +320,7 @@ export function PromptEditor({ initial, seed, initialCharacterId }: { initial?: 
           currentPrompt={prompt}
           onApply={applyOptimization}
           onDiscard={discardOptimization}
-          onRetry={() => void requestOptimization(prompt)}
+          onRetry={(options) => void requestOptimization(optimization.originalPrompt, options)}
         />
       ) : null}
     </div>

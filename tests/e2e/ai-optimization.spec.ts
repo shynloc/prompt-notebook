@@ -10,11 +10,29 @@ async function signUp(page: Page) {
   await expect(page).toHaveURL("/", { timeout: 15_000 });
 }
 
-function optimizationPayload(prompt: string) {
+function optimizationPayload(prompt: string, structured = true) {
   return {
     data: {
       optimizedPrompt: prompt,
       model: { id: "writer-model", name: "Writer Model" },
+      ...(structured ? {
+        structure: {
+          version: 1,
+          format: "structured",
+          context: "image_generation",
+          artifactLabel: "商业人像",
+          intents: { purposes: ["promotional"], media: ["photography"], subjects: ["people"] },
+          requestedModules: [],
+          selectedModules: ["content", "organization", "appearance"],
+          capabilities: ["photographic_capture"],
+          sections: [
+            { module: "content", heading: "主体与内容", content: "一名主体明确的人物。" },
+            { module: "appearance", heading: "视觉与质感", content: "克制的色彩与精确的轮廓光。" },
+          ],
+          lockedFacts: [],
+          warnings: [],
+        },
+      } : {}),
     },
   };
 }
@@ -34,6 +52,9 @@ test("compares, applies, undoes, and discards an AI optimization", async ({ page
   const dialog = page.getByRole("dialog", { name: "提示词优化" });
   await expect(dialog.getByRole("status")).toContainText("AI 正在优化");
   await expect(dialog).toContainText(result);
+  await expect(dialog).toContainText("识别为：商业人像");
+  await dialog.getByText("查看结构视图（2 个模块）").click();
+  await expect(dialog).toContainText("克制的色彩与精确的轮廓光。");
   await expect(editor).toHaveValue("make a portrait");
   await dialog.getByRole("button", { name: "使用优化结果" }).click();
   await expect(editor).toHaveValue(result);
@@ -65,7 +86,7 @@ test("never lets a stale AI response overwrite newer edits", async ({ page }) =>
   await page.setViewportSize({ width: 390, height: 844 });
   await page.route("**/api/v1/ai/optimize", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 350));
-    await route.fulfill({ json: optimizationPayload("stale optimized result") });
+    await route.fulfill({ json: optimizationPayload("stale optimized result", false) });
   });
   await page.goto("/notes/new");
   const editor = page.getByLabel("Prompt", { exact: true });

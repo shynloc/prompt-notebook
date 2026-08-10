@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
-import { PromptOptimizationDialog, type PromptOptimizationState } from "@/components/ai/prompt-optimization-dialog";
+import {
+  PromptOptimizationDialog,
+  type PromptOptimizationRetryOptions,
+  type PromptOptimizationState,
+} from "@/components/ai/prompt-optimization-dialog";
 import { GenerationCharacterPicker } from "@/components/characters/generation-character-picker";
 import type { NoteImage, NoteView } from "@/components/notes/types";
 
@@ -86,6 +90,8 @@ export function ImageHubWorkbench() {
   const initialized = useRef(false);
   const pollAttempt = useRef(0);
   const pendingActionKeys = useRef(new Set<string>());
+  const optimizationControllerRef = useRef<AbortController | null>(null);
+  const optimizationSequenceRef = useRef(0);
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
   const [negativePrompt, setNegativePrompt] = useState("");
@@ -107,6 +113,7 @@ export function ImageHubWorkbench() {
   const [characterSaveFallbacks, setCharacterSaveFallbacks] = useState<Set<string>>(() => new Set());
   const [reverse, setReverse] = useState<{ status: "loading" | "ready" | "error"; prompt?: string; model?: string; message?: string } | null>(null);
   const [optimization, setOptimization] = useState<PromptOptimizationState | null>(null);
+  const [optimizationUndo, setOptimizationUndo] = useState<{ before: string; after: string } | null>(null);
   const { width, height } = imageSizeFor(aspectRatio, resolution);
   const referencePreviews = useMemo(() => references.map((file) => ({ file, url: URL.createObjectURL(file) })), [references]);
   const activeJobs = useMemo(() => jobs.filter((job) => activeStatuses.includes(job.status)), [jobs]);
@@ -128,6 +135,7 @@ export function ImageHubWorkbench() {
   }
 
   useEffect(() => () => referencePreviews.forEach((preview) => URL.revokeObjectURL(preview.url)), [referencePreviews]);
+  useEffect(() => () => optimizationControllerRef.current?.abort(), []);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -336,28 +344,68 @@ export function ImageHubWorkbench() {
     }
   }
 
-  async function optimizePrompt() {
-    if (!prompt.trim()) {
+  async function optimizePrompt(sourcePrompt = prompt, options: PromptOptimizationRetryOptions = {}) {
+    if (!sourcePrompt.trim()) {
       setMessage("请先输入提示词再进行优化。");
       return;
     }
-    const originalPrompt = prompt;
+    optimizationControllerRef.current?.abort();
+    const controller = new AbortController();
+    const sequence = optimizationSequenceRef.current + 1;
+    optimizationSequenceRef.current = sequence;
+    optimizationControllerRef.current = controller;
+    const originalPrompt = sourcePrompt;
+    setMessage("");
     setOptimization({ status: "loading", originalPrompt });
     try {
       const response = await fetch("/api/v1/ai/optimize", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt: originalPrompt, context: "image_generation" }),
+        body: JSON.stringify({
+          prompt: originalPrompt,
+          context: options.context ?? "image_generation",
+          ...(options.requestedModules ? { requestedModules: options.requestedModules } : {}),
+          hints: {
+            hasAiModel: Boolean(characterProfileId),
+            referenceImageCount: Math.min(characterImageIds.length + references.length, 4),
+            aspectRatio,
+          },
+        }),
+        signal: controller.signal,
       });
-      const body = await response.json();
+      const body = await response.json().catch(() => null);
+      if (sequence !== optimizationSequenceRef.current) return;
       if (!response.ok) {
         setOptimization({ status: "error", originalPrompt, message: apiMessage(body, "提示词优化失败。") });
         return;
       }
-      setOptimization({ status: "ready", originalPrompt, optimizedPrompt: body.data.optimizedPrompt, modelName: body.data.model.name });
+      setOptimization({ status: "ready", originalPrompt, optimizedPrompt: body.data.optimizedPrompt, modelName: body.data.model.name, structure: body.data.structure });
     } catch {
+      if (controller.signal.aborted || sequence !== optimizationSequenceRef.current) return;
       setOptimization({ status: "error", originalPrompt, message: "无法连接 AI 优化服务。" });
+    } finally {
+      if (optimizationControllerRef.current === controller) optimizationControllerRef.current = null;
     }
+  }
+
+  function discardOptimization() {
+    optimizationSequenceRef.current += 1;
+    optimizationControllerRef.current?.abort();
+    optimizationControllerRef.current = null;
+    setOptimization(null);
+  }
+
+  function applyOptimization(value: string) {
+    if (!optimization || optimization.status !== "ready" || prompt !== optimization.originalPrompt) return;
+    setOptimizationUndo({ before: prompt, after: value });
+    setPrompt(value);
+    setOptimization(null);
+  }
+
+  function undoOptimization() {
+    if (!optimizationUndo || prompt !== optimizationUndo.after) return;
+    setPrompt(optimizationUndo.before);
+    setOptimizationUndo(null);
   }
 
   async function saveAsNote(job: GenerationJob, withoutCharacter = false) {
@@ -498,7 +546,8 @@ export function ImageHubWorkbench() {
           <label className="field"><span>作品标题（保存笔记时使用）</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={200} placeholder="例如：冬夜灯塔实验" /></label>
           <label className="field"><span>Prompt</span><textarea className="imagehub-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={50_000} required placeholder="描述主体、构图、环境、光线、镜头与材质……" /></label>
           <div className="imagehub-inline-actions">
-            <button type="button" onClick={() => void optimizePrompt()}>✦ AI 优化提示词</button>
+            {optimizationUndo && prompt === optimizationUndo.after ? <button type="button" onClick={undoOptimization}>撤销 AI 优化</button> : null}
+            <button aria-busy={optimization?.status === "loading"} disabled={optimization?.status === "loading"} type="button" onClick={() => void optimizePrompt()}>{optimization?.status === "loading" ? "AI 优化中…" : "✦ AI 优化提示词"}</button>
             <span>{prompt.length.toLocaleString()} / 50,000</span>
           </div>
           <label className="field"><span>负面提示词</span><textarea value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} maxLength={20_000} placeholder="watermark, blurry, malformed hands…" /></label>
@@ -562,7 +611,7 @@ export function ImageHubWorkbench() {
         <button autoFocus className="imagehub-review__close" type="button" onClick={() => setReverse(null)}>放弃并关闭</button>
       </div></div> : null}
 
-      {optimization ? <PromptOptimizationDialog state={optimization} currentPrompt={prompt} onApply={(value) => { if (optimization.status === "ready" && prompt === optimization.originalPrompt) setPrompt(value); setOptimization(null); }} onDiscard={() => setOptimization(null)} onRetry={() => void optimizePrompt()} /> : null}
+      {optimization ? <PromptOptimizationDialog state={optimization} currentPrompt={prompt} onApply={applyOptimization} onDiscard={discardOptimization} onRetry={(options) => void optimizePrompt(optimization.originalPrompt, options)} /> : null}
     </div>
   );
 }

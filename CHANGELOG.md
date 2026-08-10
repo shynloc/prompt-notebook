@@ -4,6 +4,28 @@ All notable changes use the Keep a Changelog structure. Versions follow Semantic
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-10
+
+### Added
+
+- Added adaptive structured prompt optimization with a finite semantic-module vocabulary for portrait, product, landscape, poster, cover, infographic, comic and mixed visual work.
+- Added a transient Prompt IR with recognized labels, selected modules, validated sections, factual warnings and server-rendered final prompts.
+- Added structure inspection and user-correctable module selection to the optimization comparison dialog without changing the one-click default flow.
+
+### Changed
+
+- Prompt notes now use automatic general/image intent detection while ImageHub supplies explicit image-generation, AI Model, reference-image and aspect-ratio context.
+- Image optimization uses bounded semantic capabilities instead of expanding a category-specific system prompt.
+- The comparison dialog can correct an automatic classification, requires review for blocking fact or aspect-ratio conflicts, and resets confirmations for every retry.
+- ImageHub cancels stale optimization requests and offers one-click undo after applying an optimized prompt.
+
+### Security
+
+- Treats provider structure as untrusted input with strict validation, fixed server-owned labels and ordering, bounded fields and safe legacy fallback.
+- Extracts exact quoted and high-confidence numeric literals on the server and requires explicit confirmation before applying a result that omits protected content.
+- Keeps source prompts and protected literals in the user message so they cannot alter system instructions.
+- Updated vulnerable transitive `nanoid`, `brace-expansion` and `js-yaml` versions to patched releases.
+
 ## [1.5.0] - 2026-08-06
 
 ### Added

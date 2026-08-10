@@ -47,6 +47,49 @@ beforeEach(() => {
 });
 
 describe("AI ImageHub workbench", () => {
+  it("cancels stale optimization responses, sends visual hints, and supports undo", async () => {
+    let releaseFirst: (response: Response) => void = () => undefined;
+    const firstOptimization = new Promise<Response>((resolve) => { releaseFirst = resolve; });
+    let optimizationAttempt = 0;
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/api/v1/generations?") && !init?.method) return Response.json({ data: [] });
+      if (url === "/api/v1/ai/optimize" && init?.method === "POST") {
+        optimizationAttempt += 1;
+        if (optimizationAttempt === 1) return firstOptimization;
+        return Response.json({ data: { optimizedPrompt: "newer optimized prompt", model: { id: "writer", name: "Writer" } } });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    render(<ImageHubWorkbench />);
+    await screen.findByText("还没有生成记录");
+    const editor = screen.getByLabelText("Prompt");
+    fireEvent.change(editor, { target: { value: "original visual prompt" } });
+    fireEvent.click(screen.getByRole("button", { name: /手机竖屏.*9:16/ }));
+    fireEvent.click(screen.getByRole("button", { name: "✦ AI 优化提示词" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("AI 正在优化提示词");
+    fireEvent.click(screen.getByRole("button", { name: "取消优化" }));
+    expect(screen.queryByRole("dialog", { name: "提示词优化" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "✦ AI 优化提示词" }));
+    expect(await screen.findByText("newer optimized prompt")).toBeVisible();
+    releaseFirst(Response.json({ data: { optimizedPrompt: "stale optimized prompt", model: { id: "old", name: "Old" } } }));
+    await waitFor(() => expect(screen.queryByText("stale optimized prompt")).not.toBeInTheDocument());
+
+    const optimizationCalls = fetcher.mock.calls.filter(([url]) => String(url) === "/api/v1/ai/optimize");
+    const payload = JSON.parse(String(optimizationCalls[1][1]?.body));
+    expect(payload).toMatchObject({
+      context: "image_generation",
+      hints: { hasAiModel: false, referenceImageCount: 0, aspectRatio: "9:16" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "使用优化结果" }));
+    expect(editor).toHaveValue("newer optimized prompt");
+    fireEvent.click(screen.getByRole("button", { name: "撤销 AI 优化" }));
+    expect(editor).toHaveValue("original visual prompt");
+  });
+
   it("creates a durable job and exposes cancellation without losing the prompt", async () => {
     const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);

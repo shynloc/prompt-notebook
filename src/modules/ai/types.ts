@@ -1,3 +1,5 @@
+import type { PromptOptimizationStructure } from "./prompt-structure-contract";
+
 export const AI_PROVIDER_TYPES = ["openai_compatible"] as const;
 export type AiProviderType = (typeof AI_PROVIDER_TYPES)[number];
 
@@ -62,6 +64,12 @@ export interface AiPromptOptimizationInput extends AiConnectionInput {
 
 export interface AiPromptOptimizationResult {
   optimizedPrompt: string;
+}
+
+export interface PromptOptimizationServiceResult {
+  optimizedPrompt: string;
+  model: { id: string; name: string };
+  structure?: PromptOptimizationStructure;
 }
 
 export interface AiReferenceImage {

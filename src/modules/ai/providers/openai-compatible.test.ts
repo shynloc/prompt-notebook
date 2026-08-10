@@ -148,7 +148,12 @@ describe("OpenAI-compatible provider adapter", () => {
       modelId: "writer-model",
       prompt: "make a portrait",
       systemInstruction: "Improve the supplied prompt and return only the result.",
-      parameters: { temperature: 0.4, max_tokens: 900, messages: "must-be-ignored" },
+      parameters: {
+        temperature: 0.4,
+        max_tokens: 900,
+        messages: "must-be-ignored",
+        response_format: "must-be-ignored",
+      },
     });
 
     expect(result).toEqual({ optimizedPrompt: "A cinematic portrait with precise rim lighting." });
@@ -156,6 +161,7 @@ describe("OpenAI-compatible provider adapter", () => {
     expect(String(url)).toBe("https://api.example.com/v1/chat/completions");
     const body = JSON.parse(String(init?.body));
     expect(body).toMatchObject({ model: "writer-model", temperature: 0.4, max_tokens: 900, stream: false });
+    expect(body).not.toHaveProperty("response_format");
     expect(body.messages).toEqual([
       { role: "system", content: "Improve the supplied prompt and return only the result." },
       { role: "user", content: "make a portrait" },
