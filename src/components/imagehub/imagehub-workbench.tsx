@@ -10,6 +10,8 @@ import {
   type PromptOptimizationState,
 } from "@/components/ai/prompt-optimization-dialog";
 import { GenerationCharacterPicker } from "@/components/characters/generation-character-picker";
+import { ReversePromptDialog, type ReversePromptSource, type ReversePromptValue } from "@/components/ai/reverse-prompt-workbench";
+import { storePromptHandoff, takePromptHandoff } from "@/modules/sync/prompt-handoff";
 import type { NoteImage, NoteView } from "@/components/notes/types";
 
 import {
@@ -111,7 +113,8 @@ export function ImageHubWorkbench() {
   const [jobFeedback, setJobFeedback] = useState<Record<string, string>>({});
   const [savedJobs, setSavedJobs] = useState<Set<string>>(() => new Set());
   const [characterSaveFallbacks, setCharacterSaveFallbacks] = useState<Set<string>>(() => new Set());
-  const [reverse, setReverse] = useState<{ status: "loading" | "ready" | "error"; prompt?: string; model?: string; message?: string } | null>(null);
+  const [reverse, setReverse] = useState<{ source?: ReversePromptSource } | null>(null);
+  const [reverseUndo, setReverseUndo] = useState<{ before: ReversePromptValue; after: ReversePromptValue } | null>(null);
   const [optimization, setOptimization] = useState<PromptOptimizationState | null>(null);
   const [optimizationUndo, setOptimizationUndo] = useState<{ before: string; after: string } | null>(null);
   const { width, height } = imageSizeFor(aspectRatio, resolution);
@@ -178,8 +181,13 @@ export function ImageHubWorkbench() {
             await selectCharacter(character?.id);
           }
         } else {
+          const handoff = takePromptHandoff(searchParams.get("handoff"), "imagehub");
           const draft = sessionStorage.getItem("prompt-notebook:imagehub-draft");
-          if (draft) {
+          if (handoff) {
+            setPrompt(handoff.prompt);
+            setNegativePrompt(handoff.negativePrompt);
+            setMessage("已载入图片反推结果，可以调整后开始生成。");
+          } else if (draft) {
             sessionStorage.removeItem("prompt-notebook:imagehub-draft");
             const parsed = JSON.parse(draft) as {
               title?: string;
@@ -206,7 +214,7 @@ export function ImageHubWorkbench() {
       }
     }
     void initialize();
-  }, [sourceCharacterId, sourceNoteId]);
+  }, [searchParams, sourceCharacterId, sourceNoteId]);
 
   useEffect(() => {
     if (!activeJobs.length) {
@@ -231,15 +239,6 @@ export function ImageHubWorkbench() {
     }, delay);
     return () => window.clearTimeout(timer);
   }, [activeJobs, pollCycle]);
-
-  useEffect(() => {
-    if (!reverse) return;
-    const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setReverse(null);
-    };
-    document.addEventListener("keydown", close);
-    return () => document.removeEventListener("keydown", close);
-  }, [reverse]);
 
   async function generate(event: FormEvent) {
     event.preventDefault();
@@ -319,29 +318,15 @@ export function ImageHubWorkbench() {
     }
   }
 
-  async function reverseFrom(source: File | GenerationAsset) {
-    setReverse({ status: "loading" });
-    try {
-      const response = source instanceof File
-        ? await (() => {
-          const form = new FormData();
-          form.set("image", source);
-          return fetch("/api/v1/ai/reverse-prompt", { method: "POST", body: form });
-        })()
-        : await fetch("/api/v1/ai/reverse-prompt", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ imageUrl: source.displayUrl }),
-        });
-      const body = await response.json();
-      if (!response.ok) {
-        setReverse({ status: "error", message: apiMessage(body, "图片反推失败，请稍后再试。") });
-        return;
-      }
-      setReverse({ status: "ready", prompt: body.data.prompt, model: body.data.model.name });
-    } catch {
-      setReverse({ status: "error", message: "无法连接图片反推服务。" });
-    }
+  function reverseFrom(source: File | GenerationAsset) {
+    setReverse({ source: source instanceof File ? source : { imageUrl: source.displayUrl, noteImage: noteImage(source) } });
+  }
+
+  function applyReverse(value: ReversePromptValue) {
+    if ((prompt.trim() || negativePrompt.trim()) && !window.confirm("使用反推结果将替换当前 Prompt 和负面提示词，是否继续？原内容可撤销恢复。")) return;
+    setReverseUndo({ before: { prompt, negativePrompt }, after: value });
+    setPrompt(value.prompt); setNegativePrompt(value.negativePrompt); setReverse(null);
+    setMessage("已使用图片反推结果；如需恢复原输入，可以撤销。");
   }
 
   async function optimizePrompt(sourcePrompt = prompt, options: PromptOptimizationRetryOptions = {}) {
@@ -544,13 +529,15 @@ export function ImageHubWorkbench() {
           <div className="imagehub-console__label"><span>01</span> 提示词控制台</div>
           {sourceNoteId ? <p className="imagehub-origin">已从笔记载入 · <Link href={`/notes/${sourceNoteId}/edit`}>返回编辑</Link></p> : null}
           <label className="field"><span>作品标题（保存笔记时使用）</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={200} placeholder="例如：冬夜灯塔实验" /></label>
-          <label className="field"><span>Prompt</span><textarea className="imagehub-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={50_000} required placeholder="描述主体、构图、环境、光线、镜头与材质……" /></label>
+          <label className="field"><span>Prompt</span><textarea aria-label="Prompt" className="imagehub-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={50_000} required placeholder="描述主体、构图、环境、光线、镜头与材质……" /></label>
           <div className="imagehub-inline-actions">
+            <button type="button" onClick={() => setReverse({})}>图片反推提示词</button>
+            {reverseUndo && prompt === reverseUndo.after.prompt && negativePrompt === reverseUndo.after.negativePrompt ? <button type="button" onClick={() => { setPrompt(reverseUndo.before.prompt); setNegativePrompt(reverseUndo.before.negativePrompt); setReverseUndo(null); setMessage("已恢复反推前的输入。"); }}>撤销图片反推</button> : null}
             {optimizationUndo && prompt === optimizationUndo.after ? <button type="button" onClick={undoOptimization}>撤销 AI 优化</button> : null}
             <button aria-busy={optimization?.status === "loading"} disabled={optimization?.status === "loading"} type="button" onClick={() => void optimizePrompt()}>{optimization?.status === "loading" ? "AI 优化中…" : "✦ AI 优化提示词"}</button>
             <span>{prompt.length.toLocaleString()} / 50,000</span>
           </div>
-          <label className="field"><span>负面提示词</span><textarea value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} maxLength={20_000} placeholder="watermark, blurry, malformed hands…" /></label>
+          <label className="field"><span>负面提示词</span><textarea aria-label="负面提示词" value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} maxLength={20_000} placeholder="watermark, blurry, malformed hands…" /></label>
 
           <fieldset className="imagehub-options"><legend>画布比例</legend><div className="imagehub-segments imagehub-segments--ratios">{imageAspectRatios.map((ratio) => <button aria-pressed={aspectRatio === ratio.id} key={ratio.id} type="button" onClick={() => setAspectRatio(ratio.id)}><strong>{ratio.label}</strong><small>{ratio.id}</small></button>)}</div></fieldset>
           <fieldset className="imagehub-options"><legend>输出尺寸</legend><div className="imagehub-segments imagehub-segments--resolutions">{imageResolutionTiers.map((tier) => {
@@ -605,11 +592,7 @@ export function ImageHubWorkbench() {
         </section>
       </div>
 
-      {reverse ? <div className="imagehub-review" role="dialog" aria-modal="true" aria-labelledby="reverse-title"><div>
-        <span className="section-kicker">IMAGE → PROMPT</span><h3 id="reverse-title">图片反推结果</h3>
-        {reverse.status === "loading" ? <p role="status">AI 正在观察构图、光线与材质…</p> : reverse.status === "error" ? <p role="alert">{reverse.message}</p> : <><small>由 {reverse.model} 分析</small><textarea aria-label="反推提示词" readOnly value={reverse.prompt} /><div><button type="button" onClick={() => { setPrompt(reverse.prompt ?? ""); setReverse(null); }}>使用这个 Prompt</button><button type="button" onClick={() => navigator.clipboard.writeText(reverse.prompt ?? "")}>复制</button></div></>}
-        <button autoFocus className="imagehub-review__close" type="button" onClick={() => setReverse(null)}>放弃并关闭</button>
-      </div></div> : null}
+      {reverse ? <ReversePromptDialog initialSource={reverse.source} onClose={() => setReverse(null)} onUse={applyReverse} onAnalyzeTerms={(value) => { const id = storePromptHandoff("analyze", value); window.location.assign(`/library?tab=analyze&handoff=${id}`); }} /> : null}
 
       {optimization ? <PromptOptimizationDialog state={optimization} currentPrompt={prompt} onApply={applyOptimization} onDiscard={discardOptimization} onRetry={(options) => void optimizePrompt(optimization.originalPrompt, options)} /> : null}
     </div>

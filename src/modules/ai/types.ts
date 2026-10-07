@@ -103,6 +103,8 @@ export interface AiReversePromptInput extends AiConnectionInput {
   image: Uint8Array;
   mimeType: "image/jpeg" | "image/png" | "image/webp";
   parameters: Record<string, string | number | boolean>;
+  systemInstruction?: string;
+  userInstruction?: string;
   signal?: AbortSignal;
 }
 

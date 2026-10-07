@@ -702,7 +702,7 @@
 
 .character-reference-dialog {
   align-items: center;
-  background: rgb(15 14 12 / 82%);
+  background: transparent;
   display: flex;
   inset: 0;
   justify-content: center;
@@ -719,6 +719,7 @@
   grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   max-height: calc(100dvh - 2rem);
   max-width: 76rem;
+  min-width: 0;
   min-height: min(46rem, calc(100dvh - 2rem));
   overflow: hidden;
   width: 100%;
@@ -731,9 +732,12 @@
 .character-reference-toolbar { align-items: center; display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr) auto; padding: var(--space-3) var(--space-5); }
 .character-reference-toolbar input { background: var(--color-paper-strong); border: 1px solid var(--color-border); min-height: 3rem; padding: 0.7rem; width: 100%; }
 .character-reference-toolbar > span { font-family: var(--font-mono); font-size: 0.7rem; font-weight: 850; }
-.character-reference-dialog__panel > .character-feedback { margin: 0 var(--space-5) var(--space-3); }
-.character-reference-table-wrap { overflow: auto; overscroll-behavior: contain; }
-.character-reference-table { border-collapse: collapse; min-width: 58rem; width: 100%; }
+.character-reference-feedback .character-feedback { margin: 0 var(--space-5) var(--space-3); }
+.character-reference-table-wrap { min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; }
+.character-reference-table { border-collapse: collapse; table-layout: fixed; width: 100%; }
+.character-reference-table thead th:first-child { width: 6rem; }
+.character-reference-table thead th:nth-child(2) { width: 12rem; }
+.character-reference-table thead th:last-child { width: 7rem; }
 .character-reference-table th,
 .character-reference-table td { border-bottom: 1px solid rgb(41 39 34 / 28%); padding: var(--space-3); text-align: left; vertical-align: middle; }
 .character-reference-table thead th { background: var(--color-label); color: white; font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.08em; position: sticky; top: 0; z-index: 2; }
@@ -741,13 +745,13 @@
 .character-reference-table td:first-child { width: 6rem; }
 .character-reference-table td:first-child a { aspect-ratio: 3 / 4; display: block; max-width: 4.5rem; overflow: hidden; }
 .character-reference-table td:first-child img { height: 100%; object-fit: cover; width: 100%; }
-.character-reference-table tbody th { min-width: 12rem; width: 14rem; }
+.character-reference-table tbody th { overflow-wrap: anywhere; }
 .character-reference-table tbody th > strong,
 .character-reference-table tbody th > small,
 .character-reference-table tbody th > a { display: block; }
 .character-reference-table tbody th > small { color: var(--color-ink-muted); font-size: 0.68rem; font-weight: 400; margin-top: 0.3rem; }
 .character-reference-table tbody th > a { color: var(--color-stamp-dark); font-size: 0.62rem; margin-top: 0.5rem; }
-.character-reference-photos { display: flex; gap: var(--space-2); max-width: 40rem; overflow-x: auto; padding: 0.2rem; }
+.character-reference-photos { display: flex; gap: var(--space-2); max-width: 100%; min-width: 0; overflow-x: auto; padding: 0.2rem; }
 .character-reference-photos > button { aspect-ratio: 3 / 4; background: #24211e; border: 2px solid transparent; cursor: pointer; flex: 0 0 4.8rem; overflow: hidden; padding: 0; position: relative; }
 .character-reference-photos > button[aria-pressed="true"] { border-color: var(--color-stamp); box-shadow: 0 0 0 2px var(--color-stamp); }
 .character-reference-photos img { height: 100%; object-fit: cover; width: 100%; }
@@ -791,7 +795,7 @@
   .character-reference-dialog__panel { border: 0; max-height: 100dvh; min-height: 100dvh; }
   .character-reference-dialog__panel > header { padding: var(--space-4); }
   .character-reference-toolbar { grid-template-columns: minmax(0, 1fr); padding: var(--space-3) var(--space-4); }
-  .character-reference-dialog__panel > .character-feedback { margin-left: var(--space-4); margin-right: var(--space-4); }
+  .character-reference-feedback .character-feedback { margin-left: var(--space-4); margin-right: var(--space-4); }
   .character-reference-table { display: block; min-width: 0; }
   .character-reference-table thead { display: none; }
   .character-reference-table tbody { display: grid; gap: var(--space-3); padding: var(--space-3) var(--space-4); }

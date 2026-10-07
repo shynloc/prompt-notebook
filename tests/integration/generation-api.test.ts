@@ -13,6 +13,7 @@ import { createGenerationHandlers } from "@/app/api/v1/generations/route";
 import { auth } from "@/lib/auth/server";
 import { AiProviderRegistry } from "@/modules/ai/provider-registry";
 import { ReversePromptService } from "@/modules/ai/reverse-prompt-service";
+import { reverseModelFixture } from "@/test/reverse-fixture";
 
 process.env.AI_CREDENTIAL_ENCRYPTION_KEYS = `test:${randomBytes(32).toString("base64url")}`;
 process.env.AI_CREDENTIAL_ACTIVE_KEY_ID = "test";
@@ -155,7 +156,7 @@ describe("generation API", () => {
     form.set("image", new File([png], "source.png", { type: "image/png" }));
     const response = await handler(request(`${base}/api/v1/ai/reverse-prompt`, { cookie: owner.cookie, method: "POST", body: form }));
     expect(response.status).toBe(200);
-    expect(reverse).toHaveBeenCalledWith(owner.userId, expect.any(Buffer), "image/png", expect.any(AbortSignal));
+    expect(reverse).toHaveBeenCalledWith(owner.userId, expect.any(Buffer), "image/png", expect.any(AbortSignal), { additionalRequirements: "", language: "zh" });
     expect((await response.json()).data.prompt).toContain("miniature");
   });
 
@@ -163,19 +164,41 @@ describe("generation API", () => {
     const owner = await sessionFor();
     const other = await sessionFor();
     await configureReverseModel(owner.cookie);
-    const reversePrompt = vi.fn(async (input: { apiKey: string }) => {
+    const reversePrompt = vi.fn(async (input: { apiKey: string; userInstruction?: string; systemInstruction?: string }) => {
       expect(input.apiKey).toBe("sk-vision-secret");
-      return { prompt: "A precise reconstructed image prompt" };
+      expect(JSON.parse(input.userInstruction!)).toMatchObject({ additionalRequirements: "把衬衫改成蓝色", language: "zh" });
+      expect(input.systemInstruction).not.toContain("把衬衫改成蓝色");
+      return { prompt: JSON.stringify(reverseModelFixture) };
     });
     const service = new ReversePromptService(new AiProviderRegistry([{
       type: "openai_compatible",
       testConnection: vi.fn(),
       reversePrompt,
     }]));
-    const result = await service.reverse(owner.userId, png, "image/png");
-    expect(result).toMatchObject({ prompt: "A precise reconstructed image prompt", model: { name: "Vision Model" } });
+    const result = await service.reverse(owner.userId, png, "image/png", undefined, { additionalRequirements: "把衬衫改成蓝色", language: "zh" });
+    expect(result).toMatchObject({ prompt: expect.stringContaining("蓝色衬衫"), model: { name: "Vision Model" } });
     expect(JSON.stringify(result)).not.toContain("sk-vision-secret");
     await expect(service.reverse(other.userId, png, "image/png"))
       .rejects.toMatchObject({ code: "AI_REVERSE_PROMPT_NOT_CONFIGURED", status: 422 });
+  });
+
+  it("authenticates reverse requests and bounds user requirements before invoking the provider", async () => {
+    const reverse = vi.fn(async () => ({ prompt: "valid" }));
+    const handler = createReversePromptHandler({ reverse });
+    const url = `${base}/api/v1/ai/reverse-prompt`;
+    expect((await handler(request(url, { method: "POST", type: "application/json", body: "{}" }))).status).toBe(401);
+    const owner = await sessionFor();
+    for (const requirements of ["把衬衫改成蓝色", "x".repeat(2_001)]) {
+      const form = new FormData(); form.set("image", new File([png], "source.png", { type: "image/png" })); form.set("additionalRequirements", requirements);
+      const response = await handler(request(url, { method: "POST", cookie: owner.cookie, body: form }));
+      expect(response.status).toBe(requirements.length > 2_000 ? 422 : 200);
+    }
+    expect(reverse).toHaveBeenCalledTimes(1);
+    expect(reverse).toHaveBeenCalledWith(owner.userId, expect.any(Buffer), "image/png", expect.any(AbortSignal), { additionalRequirements: "把衬衫改成蓝色", language: "zh" });
+    const invalid = new FormData(); invalid.set("image", new File(["not an image"], "fake.png", { type: "image/png" }));
+    expect((await handler(request(url, { method: "POST", cookie: owner.cookie, body: invalid }))).status).toBe(422);
+    const duplicate = new FormData(); duplicate.set("image", new File([png], "source.png", { type: "image/png" })); duplicate.append("language", "zh"); duplicate.append("language", "en");
+    expect((await handler(request(url, { method: "POST", cookie: owner.cookie, body: duplicate }))).status).toBe(422);
+    expect((await handler(request(url, { method: "POST", cookie: owner.cookie, type: "application/json", body: JSON.stringify({ imageUrl: "http://127.0.0.1/private.png" }) }))).status).toBe(422);
   });
 });

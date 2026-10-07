@@ -42,8 +42,8 @@ function errorDetails(body: unknown, fallback: string) {
   };
 }
 
-export function TermAnalysisWorkbench({ onSaved }: { onSaved: () => void }) {
-  const [prompt, setPrompt] = useState("");
+export function TermAnalysisWorkbench({ onSaved, initialPrompt = "", onPromptChange }: { onSaved: () => void; initialPrompt?: string; onPromptChange?: (prompt: string) => void }) {
+  const [prompt, setPrompt] = useState(initialPrompt);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -54,6 +54,7 @@ export function TermAnalysisWorkbench({ onSaved }: { onSaved: () => void }) {
   const [error, setError] = useState("");
   const [needsConfiguration, setNeedsConfiguration] = useState(false);
   const controller = useRef<AbortController | null>(null);
+  useEffect(() => () => controller.current?.abort(), []);
 
   useEffect(() => {
     if (!analyzing) return;
@@ -182,7 +183,7 @@ export function TermAnalysisWorkbench({ onSaved }: { onSaved: () => void }) {
   return <section className="term-analysis" aria-labelledby="term-analysis-title">
     <div className="term-analysis__input">
       <div><span className="section-kicker">AI ANALYSIS</span><h3 id="term-analysis-title">从完整 Prompt 提炼词条</h3><p>AI 只负责提取和分类，最终由你选择、编辑并批量收录。</p></div>
-      <label>完整提示词<textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={50_000} placeholder="粘贴一段包含人物、姿势、场景、灯光、镜头或风格描述的完整提示词…" /></label>
+      <label>完整提示词<textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); onPromptChange?.(event.target.value); }} maxLength={50_000} placeholder="粘贴一段包含人物、姿势、场景、灯光、镜头或风格描述的完整提示词…" /></label>
       <div className="term-analysis__input-footer"><span>{prompt.length.toLocaleString()} / 50,000</span>{analyzing ? <button type="button" onClick={cancel}>取消分析</button> : <button className="primary-action" type="button" disabled={prompt.trim().length < 10} onClick={() => void analyze()}>✦ AI 一键分析</button>}</div>
       {analyzing ? <div className="term-analysis__progress" role="status"><span className="button-spinner" aria-hidden="true" />{stages[stage]}</div> : null}
       {error ? <div className="term-analysis__notice term-analysis__notice--error" role="alert"><span>{error}</span>{needsConfiguration ? <a href="/settings/ai">前往设置模型</a> : <button type="button" onClick={() => void analyze()}>重新分析</button>}</div> : null}

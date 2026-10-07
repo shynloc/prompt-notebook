@@ -368,12 +368,12 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
           messages: [
             {
               role: "system",
-              content: "Analyze the supplied image and reconstruct a precise, production-ready image-generation prompt. Describe subject, composition, environment, lighting, lens, materials, color, style, and quality details. Return only the prompt in the user's likely language; do not add commentary or Markdown.",
+              content: input.systemInstruction ?? "Analyze the supplied image and reconstruct a precise, production-ready image-generation prompt. Describe subject, composition, environment, lighting, lens, materials, color, style, and quality details. Return only the prompt in the user's likely language; do not add commentary or Markdown.",
             },
             {
               role: "user",
               content: [
-                { type: "text", text: "Reconstruct the image-generation prompt for this image." },
+                { type: "text", text: input.userInstruction ?? "Reconstruct the image-generation prompt for this image." },
                 {
                   type: "image_url",
                   image_url: { url: `data:${input.mimeType};base64,${Buffer.from(input.image).toString("base64")}` },

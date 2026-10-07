@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ImageHubWorkbench } from "./imagehub-workbench";
 import type { GenerationJob } from "./types";
+import { reverseResultFixture } from "@/test/reverse-fixture";
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -119,7 +120,7 @@ describe("AI ImageHub workbench", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes("/api/v1/generations?")) return Response.json({ data: [job("succeeded")] });
-      if (url === "/api/v1/ai/reverse-prompt") return Response.json({ data: { prompt: "A reconstructed cinematic prompt", model: { name: "Vision Model" } } });
+      if (url === "/api/v1/ai/reverse-prompt") return Response.json({ data: reverseResultFixture() });
       throw new Error(`Unexpected request: ${url}`);
     });
     render(<ImageHubWorkbench />);
@@ -127,10 +128,18 @@ describe("AI ImageHub workbench", () => {
     const editor = screen.getByLabelText("Prompt");
     fireEvent.change(editor, { target: { value: "Keep this draft" } });
     fireEvent.click(screen.getByRole("button", { name: "反推" }));
-    await screen.findByDisplayValue("A reconstructed cinematic prompt");
+    fireEvent.click(screen.getByRole("button", { name: "AI 一键反推" }));
+    await waitFor(() => expect(screen.getByLabelText("反推提示词")).toHaveValue(reverseResultFixture().prompt));
     expect(editor).toHaveValue("Keep this draft");
+    vi.spyOn(window, "confirm").mockReturnValue(false);
     fireEvent.click(screen.getByRole("button", { name: "使用这个 Prompt" }));
-    await waitFor(() => expect(editor).toHaveValue("A reconstructed cinematic prompt"));
+    expect(editor).toHaveValue("Keep this draft");
+    vi.mocked(window.confirm).mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "使用这个 Prompt" }));
+    await waitFor(() => expect(editor).toHaveValue(reverseResultFixture().prompt));
+    expect(screen.getByLabelText("负面提示词")).toHaveValue(reverseResultFixture().negativePrompt);
+    fireEvent.click(screen.getByRole("button", { name: "撤销图片反推" }));
+    expect(editor).toHaveValue("Keep this draft");
   });
 
   it("downloads a generated image as a file without opening a new tab", async () => {

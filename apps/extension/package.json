@@ -1,6 +1,6 @@
 {
   "name": "@prompt-notebook/extension",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -26,6 +26,6 @@
     "fflate": "^0.8.2",
     "typescript": "^5.9.2",
     "vite": "^7.3.6",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.11"
   }
 }

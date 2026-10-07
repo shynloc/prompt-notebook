@@ -108,6 +108,19 @@ describe("user-scoped notes API", () => {
     expect((await changed.json()).data.id).toBe(firstBody.data.id);
   });
 
+  it("replays reverse-prompt saves and rejects reuse with changed content", async () => {
+    const { cookie } = await sessionFor("reverse-idempotent-note");
+    const key = `reverse-note:${randomUUID()}`;
+    const body = { title: "Reconstructed portrait", prompt: "blue silk shirt" };
+    const first = await createNote(request(apiBase, { cookie, body, headers: { "idempotency-key": key } }));
+    const replay = await createNote(request(apiBase, { cookie, body, headers: { "idempotency-key": key } }));
+    const changed = await createNote(request(apiBase, { cookie, body: { ...body, prompt: "red shirt" }, headers: { "idempotency-key": key } }));
+    expect(first.status).toBe(201);
+    expect(replay.status).toBe(200);
+    expect((await replay.json()).data.id).toBe((await first.json()).data.id);
+    expect(changed.status).toBe(409);
+  });
+
   it("updates atomically and returns the server note on version conflict", async () => {
     const { cookie } = await sessionFor("conflict");
     const note = await create(cookie);

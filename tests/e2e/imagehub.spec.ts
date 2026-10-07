@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { reverseResultFixture } from "../../src/test/reverse-fixture";
 
 async function signUp(page: Page) {
   const email = `imagehub-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
@@ -66,7 +67,7 @@ test("restores, polls, reverses, and saves an ImageHub generation on mobile", as
     contentType: "image/png",
     headers: { "content-disposition": 'attachment; filename="prompt-notebook-result.png"' },
   }));
-  await page.route("**/api/v1/ai/reverse-prompt", (route) => route.fulfill({ json: { data: { prompt: "A reconstructed prompt", model: { name: "Vision" } } } }));
+  await page.route("**/api/v1/ai/reverse-prompt", (route) => route.fulfill({ json: { data: reverseResultFixture() } }));
   await page.route("**/api/v1/notes", async (route) => {
     if (route.request().method() === "POST") await route.fulfill({ status: 201, json: { data: { id: "note-1" }, meta: { replayed: false } } });
     else await route.fallback();
@@ -97,11 +98,13 @@ test("restores, polls, reverses, and saves an ImageHub generation on mobile", as
   await page.getByRole("button", { name: "下载" }).click();
   expect((await downloadEvent).suggestedFilename()).toBe("prompt-notebook-result.png");
   await expect(page.getByText("图片下载已开始。")).toBeVisible();
-  await page.getByRole("button", { name: "反推" }).click();
-  await expect(page.getByLabel("反推提示词")).toHaveValue("A reconstructed prompt");
+  await page.getByRole("button", { name: "反推", exact: true }).click();
+  await page.getByRole("button", { name: "AI 一键反推" }).click();
+  await expect(page.getByLabel("反推提示词", { exact: true })).toHaveValue(reverseResultFixture().prompt);
   await expect(page.getByLabel("Prompt")).toHaveValue(queued.prompt);
+  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "使用这个 Prompt" }).click();
-  await expect(page.getByLabel("Prompt")).toHaveValue("A reconstructed prompt");
+  await expect(page.getByLabel("Prompt", { exact: true })).toHaveValue(reverseResultFixture().prompt);
   await page.getByRole("button", { name: "设为封面" }).click();
   await expect(page.getByText("生成图已设为原笔记封面。")).toBeVisible();
   await page.getByRole("button", { name: "保存为笔记" }).click();

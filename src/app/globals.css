@@ -6,6 +6,8 @@
 @import "../components/extension/extension-marketing.css";
 @import "../components/ai/ai-settings.css";
 @import "../components/ai/prompt-optimization-dialog.css";
+@import "../components/ai/app-dialog.css";
+@import "../components/ai/reverse-prompt-workbench.css";
 @import "../components/imagehub/imagehub.css";
 @import "../components/media/storage-settings.css";
 @import "../components/settings/settings.css";

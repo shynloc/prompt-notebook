@@ -1,5 +1,5 @@
 .library-mode-tabs { background: var(--color-paper); border: 2px solid var(--color-border); box-shadow: 3px 4px 0 rgb(41 39 34 / 22%); display: flex; overflow-x: auto; }
-.library-mode-tabs button { background: transparent; border: 0; border-right: 1px solid var(--color-border); color: var(--color-ink); cursor: pointer; flex: 1; font-family: var(--font-mono); font-size: .76rem; font-weight: 900; min-height: 3.2rem; min-width: 10rem; padding: .75rem 1rem; }
+.library-mode-tabs button { background: transparent; border: 0; border-right: 1px solid var(--color-border); color: var(--color-ink); cursor: pointer; flex: 1 1 0; font-family: var(--font-mono); font-size: .76rem; font-weight: 900; min-height: 3.2rem; min-width: 0; padding: .75rem 1rem; }
 .library-mode-tabs button[aria-selected="true"] { background: var(--color-label); color: var(--color-label-text); }
 .term-analysis { display: grid; gap: var(--space-6); }
 .term-analysis__input, .term-analysis__results { background: var(--color-paper); border: 2px solid var(--color-border); box-shadow: var(--shadow-hard); min-width: 0; padding: clamp(1rem, 3vw, 1.5rem); }
@@ -46,4 +46,4 @@
 .term-analysis__bulk button { background: var(--color-paper-strong); border: 1px solid var(--color-border); cursor: pointer; font-size: .75rem; font-weight: 850; min-height: 2.55rem; padding: .5rem .65rem; }
 .term-analysis__bulk .primary-action { background: var(--color-stamp); color: white; }
 @media (min-width: 70rem) { .term-analysis { align-items: start; grid-template-columns: minmax(18rem, .8fr) minmax(0, 1.35fr); } .term-analysis__input { position: sticky; top: 1rem; } .term-analysis__results { min-height: 28rem; } }
-@media (max-width: 39.99rem) { .library-mode-tabs button { min-width: 9rem; } .term-analysis__bulk { display: grid; grid-template-columns: 1fr 1fr; } .term-analysis__bulk > span, .term-analysis__bulk .primary-action { grid-column: 1 / -1; width: 100%; } }
+@media (max-width: 39.99rem) { .library-mode-tabs button { font-size: .72rem; padding: .65rem .45rem; } .term-analysis__bulk { display: grid; grid-template-columns: 1fr 1fr; } .term-analysis__bulk > span, .term-analysis__bulk .primary-action { grid-column: 1 / -1; width: 100%; } }

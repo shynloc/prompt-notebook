@@ -1,0 +1,26 @@
+.app-dialog {
+  background: transparent;
+  border: 0;
+  color: var(--color-ink);
+  height: 100dvh;
+  inset: 0;
+  margin: 0;
+  max-height: 100dvh;
+  max-width: 100vw;
+  overflow: hidden;
+  padding: clamp(0.5rem, 3vw, 2rem);
+  width: 100vw;
+}
+.app-dialog[open] {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+.app-dialog::backdrop {
+  background: rgb(15 14 12 / 82%);
+}
+@media (max-width: 47.99rem) {
+  .app-dialog {
+    padding: 0;
+  }
+}

@@ -4,6 +4,27 @@ All notable changes use the Keep a Changelog structure. Versions follow Semantic
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-07
+
+### Added
+
+- Added an image-to-prompt workbench in AI ImageHub and the Prompt Wiki, with upload, paste and HTTPS image-link sources.
+- Added adaptive structured image reconstruction, separate original observations, user-requested overrides, uncertainty notes, module editing and JSON inspection.
+- Added result handoffs to image generation and vocabulary analysis, optional image-hosted note covers and idempotent note saving.
+
+### Fixed
+
+- Moved the AI Model picker to the native browser modal top layer so the task wall cannot cover its controls.
+- Constrained reference photo rows and retained a visible confirmation tray on desktop, tablet and mobile.
+- Added cancellation and stale-result guards, apply confirmation and undo, save feedback and duplicate-click protection.
+
+### Security
+
+- Validated provider JSON through bounded, strict schemas and server-owned labels; kept observations separate from requested changes.
+- Bounded upload streams, checked decoded images, retained owner-isolated credentials and SSRF-safe remote image downloads.
+- Kept prompt handoffs short-lived in per-tab storage, with prompt content excluded from URLs.
+- Updated Next.js, Sharp, Nodemailer, Vitest and vulnerable transitive dependencies to patched versions.
+
 ## [1.6.0] - 2026-08-10
 
 ### Added

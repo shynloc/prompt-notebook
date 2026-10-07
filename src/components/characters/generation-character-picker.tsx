@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CHARACTER_VIEW_OPTIONS, type CharacterProfile } from "./types";
+import { AppDialog } from "@/components/ai/app-dialog";
 
 function viewLabel(value: string) {
   return CHARACTER_VIEW_OPTIONS.find((option) => option.id === value)?.label ?? "其他";
@@ -57,27 +58,6 @@ export function GenerationCharacterPicker({
     }).catch(() => undefined);
     return () => { active = false; };
   }, [profiles, selectedProfileId]);
-
-  useEffect(() => {
-    if (!open) return;
-    function keydown(event: KeyboardEvent) {
-      if (event.key === "Escape") { event.preventDefault(); closePicker(); }
-      if (event.key !== "Tab") return;
-      const focusable = panelRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])');
-      if (!focusable?.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    }
-    document.addEventListener("keydown", keydown);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", keydown);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open]);
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
@@ -148,11 +128,11 @@ export function GenerationCharacterPicker({
       </button>
       {selectedImageIds.length ? <button className="generation-character-picker__clear" type="button" onClick={() => onChange(undefined, [])}>清除 AI Model</button> : null}
 
-      {open ? <div className="character-reference-dialog" role="dialog" aria-modal="true" aria-labelledby="character-reference-title" onMouseDown={(event) => { if (event.currentTarget === event.target) closePicker(); }}>
+      {open ? <AppDialog className="character-reference-dialog" labelledBy="character-reference-title" onClose={closePicker}>
         <div ref={panelRef} className="character-reference-dialog__panel">
           <header><div><span className="section-kicker">AI MODEL CASTING</span><h3 id="character-reference-title">选择垫图模特</h3><p>一次任务只使用一个 AI Model，可从该角色选择多张参考图。</p></div><button ref={closeRef} type="button" onClick={closePicker} aria-label="关闭 AI Model 选择器">×</button></header>
           <div className="character-reference-toolbar"><label><span className="sr-only">搜索生图 AI Model</span><input aria-label="搜索生图 AI Model" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索角色名称、用途或设定…" /></label><span>已选择 {draftImageIds.length} / {maxImages}</span></div>
-          {message ? <p className="character-feedback" role="status">{message}</p> : null}
+          <div className="character-reference-feedback">{message ? <p className="character-feedback" role="status">{message}</p> : null}</div>
           <div className="character-reference-table-wrap">
             {state === "loading" ? <div className="character-library-state" role="status">正在读取角色档案…</div> : null}
             {state === "error" ? <div className="character-library-state"><strong>角色资产读取失败</strong><p>关闭后重试，当前生图内容不会丢失。</p></div> : null}
@@ -166,7 +146,7 @@ export function GenerationCharacterPicker({
           </div>
           <footer className="character-reference-tray"><div><strong>{draftProfileId ? profiles.find((profile) => profile.id === draftProfileId)?.name : "尚未选择角色"}</strong><span>{draftImageIds.length ? `${draftImageIds.length} 张参考图会随任务安全快照` : "点击照片即可选择"}</span></div><button type="button" onClick={() => { setDraftProfileId(undefined); setDraftImageIds([]); setMessage(""); }}>清空</button><button className="primary-action" type="button" onClick={apply}>确认使用</button></footer>
         </div>
-      </div> : null}
+      </AppDialog> : null}
     </div>
   );
 }

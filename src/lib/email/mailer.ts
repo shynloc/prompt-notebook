@@ -18,7 +18,7 @@ class ConsoleMailer implements Mailer {
 }
 
 class SmtpMailer implements Mailer {
-  private readonly transporter: nodemailer.Transporter;
+  private readonly transporter: ReturnType<typeof nodemailer.createTransport>;
 
   constructor(
     host: string,

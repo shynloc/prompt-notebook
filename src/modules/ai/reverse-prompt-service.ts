@@ -7,6 +7,7 @@ import { ApiError } from "@/lib/api/errors";
 import { decryptCredential } from "./credential-crypto";
 import { AiProviderRegistry } from "./provider-registry";
 import { AiProviderError, type AiProviderType } from "./types";
+import { parseReversePromptDocument, REVERSE_PROMPT_SYSTEM_INSTRUCTION, reverseOptionsSchema, type ReversePromptOptions } from "./reverse-prompt-structure";
 
 const PURPOSE = "reverse_prompt";
 const LIMIT = 6;
@@ -17,6 +18,9 @@ function consume(userId: string) {
   const now = Date.now();
   const current = windows.get(userId);
   if (!current || now - current.startedAt >= WINDOW_MS) {
+    if (windows.size >= 10_000) {
+      for (const [id, window] of windows) if (now - window.startedAt >= WINDOW_MS) windows.delete(id);
+    }
     windows.set(userId, { count: 1, startedAt: now });
     return true;
   }
@@ -39,7 +43,8 @@ function providerApiError(error: AiProviderError) {
 export class ReversePromptService {
   constructor(private readonly providers = new AiProviderRegistry()) {}
 
-  async reverse(userId: string, image: Buffer, mimeType: "image/jpeg" | "image/png" | "image/webp", signal?: AbortSignal) {
+  async reverse(userId: string, image: Buffer, mimeType: "image/jpeg" | "image/png" | "image/webp", signal?: AbortSignal, options: ReversePromptOptions = { additionalRequirements: "", language: "zh" }) {
+    const validatedOptions = reverseOptionsSchema.parse(options);
     const [selection] = await db.select({
       modelId: aiModelProfiles.modelId,
       displayName: aiModelProfiles.displayName,
@@ -86,9 +91,12 @@ export class ReversePromptService {
         image,
         mimeType,
         parameters: selection.defaultParameters,
+        systemInstruction: REVERSE_PROMPT_SYSTEM_INSTRUCTION,
+        userInstruction: JSON.stringify({ task: "reconstruct_image_prompt", ...validatedOptions }),
         signal,
       });
-      return { prompt: result.prompt, model: { id: selection.modelId, name: selection.displayName } };
+      if (result.prompt.includes(apiKey)) throw new ApiError(502, "AI_REVERSE_PROMPT_INVALID", "模型返回的反推结果不安全，请重试或更换模型。");
+      return { ...parseReversePromptDocument(result.prompt, validatedOptions), model: { id: selection.modelId, name: selection.displayName } };
     } catch (error) {
       if (error instanceof AiProviderError) throw providerApiError(error);
       throw error;
