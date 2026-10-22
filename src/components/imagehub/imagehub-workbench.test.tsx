@@ -5,7 +5,9 @@ import { ImageHubWorkbench } from "./imagehub-workbench";
 import type { GenerationJob } from "./types";
 import { reverseResultFixture } from "@/test/reverse-fixture";
 
+const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
+  useRouter: () => router,
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -48,6 +50,108 @@ beforeEach(() => {
 });
 
 describe("AI ImageHub workbench", () => {
+  it("loads the preferred model and submits 2.5 native size and quality without changing preferences", async () => {
+    const profileId = "33333333-3333-4333-8333-333333333333";
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === "/api/v1/ai/configurations") return Response.json({ data: [{ enabled: true, modelEnabled: true, modelProfileId: profileId, modelId: "gpt-image-2.5-sunburst", name: "Studio", displayName: "Sunburst", capabilities: ["image_generation"], defaultParameters: { output_format: "webp", background: "transparent", output_compression: 85 } }] });
+      if (url === "/api/v1/ai/preferences") return Response.json({ data: [{ purpose: "image_generation", modelProfileId: profileId }] });
+      if (url.includes("/api/v1/generations?")) return Response.json({ data: [] });
+      if (url === "/api/v1/generations" && init?.method === "POST") return Response.json({ data: job("queued") }, { status: 201 });
+      throw new Error(`Unexpected request ${url}`);
+    });
+    render(<ImageHubWorkbench />);
+    await waitFor(() => expect(screen.getByLabelText("本次生图模型")).toHaveValue(profileId));
+    expect(screen.getByLabelText("图片格式")).toHaveValue("webp");
+    expect(screen.getByLabelText("图片背景")).toHaveValue("transparent");
+    expect(screen.getByLabelText("压缩质量")).toHaveValue(85);
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "An architectural poster" } });
+    fireEvent.click(screen.getByRole("button", { name: /宽屏.*16:9/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^4K/ }));
+    fireEvent.click(screen.getByRole("button", { name: /最高\s*最高质量/ }));
+    fireEvent.change(screen.getByLabelText("图片格式"), { target: { value: "png" } });
+    fireEvent.click(screen.getByRole("button", { name: /开始生成/ }));
+    await screen.findByText("已进入生成队列");
+    const call = fetcher.mock.calls.find(([url, init]) => String(url) === "/api/v1/generations" && init?.method === "POST");
+    const payload = JSON.parse(String((call?.[1]?.body as FormData).get("payload")));
+    expect(payload).toMatchObject({ modelProfileId: profileId, width: 3840, height: 2160, quality: "max", outputFormat: "png", background: "transparent" });
+    expect(payload).not.toHaveProperty("outputCompression");
+    expect(fetcher.mock.calls.filter(([url, init]) => String(url) === "/api/v1/ai/preferences" && init?.method === "PATCH")).toHaveLength(0);
+  });
+
+  it("keeps the chosen canvas when switching to a limited model and requires an explicit valid size", async () => {
+    const nativeId = "33333333-3333-4333-8333-333333333333";
+    const legacyId = "44444444-4444-4444-8444-444444444444";
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === "/api/v1/ai/configurations") return Response.json({ data: [
+        { enabled: true, modelProfileId: nativeId, modelId: "gpt-image-2.5-flare", name: "Fast", capabilities: ["image_generation"], defaultParameters: {} },
+        { enabled: true, modelProfileId: legacyId, modelId: "gpt-image-1", name: "Legacy", capabilities: ["image_generation"], defaultParameters: {} },
+      ] });
+      if (url === "/api/v1/ai/preferences") return Response.json({ data: [{ purpose: "image_generation", modelProfileId: nativeId }] });
+      if (url.includes("/api/v1/generations?")) return Response.json({ data: [] });
+      throw new Error("Unexpected request");
+    });
+    render(<ImageHubWorkbench />);
+    await waitFor(() => expect(screen.getByLabelText("本次生图模型")).toHaveValue(nativeId));
+    fireEvent.click(screen.getByRole("button", { name: /宽屏.*16:9/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^4K/ }));
+    fireEvent.change(screen.getByLabelText("本次生图模型"), { target: { value: legacyId } });
+    expect(screen.getByRole("alert")).toHaveTextContent("不支持 3840x2160");
+    expect(screen.getByRole("button", { name: /开始生成/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /最高\s*最高质量/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /横版\s*1536×1024/ }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /开始生成.*1536.*1024/ })).toBeEnabled();
+  });
+
+  it("loads a result as an editing reference with feedback and preserves the user's draft", async () => {
+    let release!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => { release = resolve; });
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/api/v1/generations?")) return Response.json({ data: [job("succeeded")] });
+      if (url.endsWith("/download")) return pending;
+      throw new Error("Unexpected request");
+    });
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:reference") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+    render(<ImageHubWorkbench />);
+    await screen.findByText("生成完成");
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Change the sky to blue" } });
+    const button = screen.getByRole("button", { name: "继续编辑" });
+    fireEvent.click(button); fireEvent.click(button);
+    expect(screen.getByRole("button", { name: "载入中…" })).toBeDisabled();
+    release(new Response(new Blob(["source-image"], { type: "image/png" })));
+    await screen.findByText("已加入参考图，当前提示词保持原样。请填写修改要求后开始生成。");
+    expect(screen.getByLabelText("Prompt")).toHaveValue("Change the sky to blue");
+    expect(screen.getByRole("img", { name: "参考图 1" })).toBeInTheDocument();
+    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("/download"))).toHaveLength(1);
+  });
+
+  it("does not apply an asynchronously loaded reference after switching to a model without image inputs", async () => {
+    let release!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => { release = resolve; });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === "/api/v1/ai/configurations") return Response.json({ data: [
+        { enabled: true, modelProfileId: "native", modelId: "gpt-image-2.5-flare", name: "Native", capabilities: ["image_generation"] },
+        { enabled: true, modelProfileId: "legacy", modelId: "dall-e-3", name: "Legacy", capabilities: ["image_generation"] },
+      ] });
+      if (url === "/api/v1/ai/preferences") return Response.json({ data: [{ purpose: "image_generation", modelProfileId: "native" }] });
+      if (url.includes("/api/v1/generations?")) return Response.json({ data: [job("succeeded")] });
+      if (url.endsWith("/download")) return pending;
+      throw new Error("Unexpected request");
+    });
+    render(<ImageHubWorkbench />);
+    await waitFor(() => expect(screen.getByLabelText("本次生图模型")).toHaveValue("native"));
+    fireEvent.click(await screen.findByRole("button", { name: "继续编辑" }));
+    fireEvent.change(screen.getByLabelText("本次生图模型"), { target: { value: "legacy" } });
+    release(new Response(new Blob(["source-image"], { type: "image/png" })));
+    await screen.findByText("当前模型已切换且不支持参考图，请选择支持图片编辑的模型后重试。");
+    expect(screen.queryByRole("img", { name: "参考图 1" })).not.toBeInTheDocument();
+  });
+
   it("cancels stale optimization responses, sends visual hints, and supports undo", async () => {
     let releaseFirst: (response: Response) => void = () => undefined;
     const firstOptimization = new Promise<Response>((resolve) => { releaseFirst = resolve; });
@@ -180,7 +284,10 @@ describe("AI ImageHub workbench", () => {
     const pendingSave = new Promise<Response>((resolve) => { releaseSave = resolve; });
     const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
-      if (url.includes("/api/v1/generations?") && !init?.method) return Response.json({ data: [job("succeeded")] });
+      if (url.includes("/api/v1/generations?") && !init?.method) return Response.json({ data: [{
+        ...job("succeeded"), modelId: "gpt-image-2.5-flare", providerType: "openai_compatible",
+        parameters: { outputFormat: "png", background: "transparent" }, resultMetadata: { usage: { total_tokens: 1200 } },
+      }] });
       if (url === "/api/v1/notes" && init?.method === "POST") return pendingSave;
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -198,6 +305,11 @@ describe("AI ImageHub workbench", () => {
     expect(screen.getByRole("button", { name: "已保存" })).toBeDisabled();
     const saveCall = fetcher.mock.calls.find(([url]) => String(url) === "/api/v1/notes");
     expect(new Headers(saveCall?.[1]?.headers).get("idempotency-key")).toBe(`imagehub-note:${resultAsset.jobId}`);
+    expect(JSON.parse(String(saveCall?.[1]?.body)).parameters).toMatchObject({
+      modelId: "gpt-image-2.5-flare", providerType: "openai_compatible",
+      request: { outputFormat: "png", background: "transparent" }, result: { usage: { total_tokens: 1200 } },
+      actualImages: [{ width: 1024, height: 1024, mimeType: "image/png" }],
+    });
   });
 
   it("offers an explicit retry without a stale AI Model association", async () => {

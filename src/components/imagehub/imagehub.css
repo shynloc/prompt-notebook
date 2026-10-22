@@ -135,6 +135,8 @@
 .imagehub-inline-actions {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   justify-content: space-between;
   margin-top: var(--space-2);
 }
@@ -175,6 +177,7 @@
 .imagehub-segments--ratios { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .imagehub-segments--resolutions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .imagehub-choice { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.imagehub-choice--extended { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
 .imagehub-segments button,
 .imagehub-choice button {
@@ -215,6 +218,15 @@
 }
 
 .imagehub-settings-row label { display: grid; gap: var(--space-2); }
+
+.imagehub-output-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.imagehub-output-grid .field { min-width: 0; }
+.imagehub-output-grid select { min-width: 0; }
+.imagehub-asset-size { display: block; font-family: var(--font-mono); font-size: 0.62rem; padding: 0.3rem; }
+.imagehub-mask-status { align-items: center; display: flex; flex-wrap: wrap; font-size: 0.75rem; gap: var(--space-2); margin-top: var(--space-3); }
+.imagehub-mask-status button { background: transparent; border: 1px solid currentColor; cursor: pointer; padding: 0.35rem 0.5rem; }
+.imagehub-job > header small { max-width: 50%; overflow-wrap: anywhere; text-align: right; }
+.imagehub-segments button:disabled, .imagehub-choice button:disabled { cursor: not-allowed; opacity: 0.4; }
 
 .imagehub-references {
   border-top: 1px dashed rgb(41 39 34 / 50%);
@@ -269,10 +281,11 @@
   background: rgb(25 24 22 / 88%);
   bottom: 0;
   display: flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
   left: 0;
   padding: 0.25rem;
-  position: absolute;
+  position: static;
   right: 0;
 }
 
@@ -283,10 +296,11 @@
   border: 0;
   color: white;
   cursor: pointer;
-  flex: 1;
+  flex: 1 1 40%;
   font-size: 0.62rem;
   font-weight: 800;
   padding: 0.25rem;
+  min-height: 2rem;
   text-align: center;
   text-decoration: none;
 }

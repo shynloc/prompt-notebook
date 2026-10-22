@@ -158,6 +158,7 @@ export const aiGenerationJobs = pgTable(
       .$type<Record<string, string | number | boolean>>()
       .default({})
       .notNull(),
+    resultMetadata: jsonb("result_metadata").$type<Record<string, unknown>>().default({}).notNull(),
     attempts: integer("attempts").default(0).notNull(),
     maxAttempts: integer("max_attempts").default(3).notNull(),
     progress: integer("progress").default(0).notNull(),
@@ -204,7 +205,7 @@ export const aiGenerationJobs = pgTable(
       sql`${table.status} in ('preparing', 'queued', 'running', 'cancel_requested', 'cancelled', 'succeeded', 'failed')`,
     ),
     check("ai_generation_jobs_dimensions_check", sql`${table.width} between 256 and 3840 and ${table.height} between 256 and 3840`),
-    check("ai_generation_jobs_quality_check", sql`${table.quality} in ('auto', 'low', 'medium', 'high')`),
+    check("ai_generation_jobs_quality_check", sql`${table.quality} in ('auto', 'low', 'medium', 'high', 'xhigh', 'max')`),
     check("ai_generation_jobs_count_check", sql`${table.imageCount} between 1 and 4`),
     check("ai_generation_jobs_attempts_check", sql`${table.attempts} >= 0 and ${table.maxAttempts} between 1 and 5`),
     check("ai_generation_jobs_progress_check", sql`${table.progress} between 0 and 100`),
@@ -239,7 +240,7 @@ export const aiGenerationAssets = pgTable(
     uniqueIndex("ai_generation_assets_job_role_ordinal_unique").on(table.jobId, table.role, table.ordinal),
     index("ai_generation_assets_user_job_idx").on(table.userId, table.jobId),
     index("ai_generation_assets_provider_key_idx").on(table.storageProvider, table.objectKey),
-    check("ai_generation_assets_role_check", sql`${table.role} in ('reference', 'result')`),
+    check("ai_generation_assets_role_check", sql`${table.role} in ('reference', 'result', 'mask')`),
     check("ai_generation_assets_ordinal_check", sql`${table.ordinal} >= 0`),
     check("ai_generation_assets_dimensions_check", sql`${table.width} > 0 and ${table.height} > 0 and ${table.sizeBytes} > 0`),
   ],

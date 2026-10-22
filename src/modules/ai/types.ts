@@ -78,8 +78,12 @@ export interface AiReferenceImage {
   mimeType: string;
 }
 
-export const IMAGE_GENERATION_QUALITIES = ["auto", "low", "medium", "high"] as const;
+export const IMAGE_GENERATION_QUALITIES = ["auto", "low", "medium", "high", "xhigh", "max"] as const;
 export type ImageGenerationQuality = (typeof IMAGE_GENERATION_QUALITIES)[number];
+export const IMAGE_OUTPUT_FORMATS = ["jpeg", "png", "webp"] as const;
+export type ImageOutputFormat = (typeof IMAGE_OUTPUT_FORMATS)[number];
+export const IMAGE_BACKGROUNDS = ["auto", "opaque", "transparent"] as const;
+export type ImageBackground = (typeof IMAGE_BACKGROUNDS)[number];
 
 export interface AiImageGenerationInput extends AiConnectionInput {
   modelId: string;
@@ -91,11 +95,22 @@ export interface AiImageGenerationInput extends AiConnectionInput {
   imageCount: number;
   parameters: Record<string, string | number | boolean>;
   referenceImages: AiReferenceImage[];
+  maskImage?: AiReferenceImage;
+  outputFormat?: ImageOutputFormat;
+  background?: ImageBackground;
+  outputCompression?: number;
   signal?: AbortSignal;
 }
 
 export interface AiImageGenerationResult {
   images: Array<{ data: Uint8Array }>;
+  metadata?: {
+    size?: string;
+    quality?: string;
+    outputFormat?: string;
+    background?: string;
+    usage?: Record<string, unknown>;
+  };
 }
 
 export interface AiReversePromptInput extends AiConnectionInput {

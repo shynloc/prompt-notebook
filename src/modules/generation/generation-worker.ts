@@ -107,9 +107,13 @@ export class GenerationWorkerProcessor {
 
     if (!job) return { status: "skipped" };
 
+    const abort = new AbortController();
+    let providerCompleted = false;
+    let storingResults = false;
     const heartbeat = setInterval(() => {
       void db.update(aiGenerationJobs).set({ heartbeatAt: new Date(), updatedAt: new Date() })
         .where(and(eq(aiGenerationJobs.id, jobId), eq(aiGenerationJobs.status, "running")))
+        .then(async () => { if (await this.cancellationRequested(jobId)) abort.abort(); })
         .catch(() => undefined);
     }, HEARTBEAT_INTERVAL_MS);
     heartbeat.unref();
@@ -130,6 +134,8 @@ export class GenerationWorkerProcessor {
         providerType: selection.providerType,
       });
       const references = await this.loadReferences(job.id, job.userId);
+      const [mask] = await db.select().from(aiGenerationAssets).where(and(eq(aiGenerationAssets.jobId, job.id), eq(aiGenerationAssets.userId, job.userId), eq(aiGenerationAssets.role, "mask"))).limit(1);
+      const maskImage: AiReferenceImage | undefined = mask ? { data: await this.media.read(storedAsset(mask)), mimeType: "image/png", filename: "mask.png" } : undefined;
       await this.assertNotCancelled(job.id);
       await this.progress(job.id, 20);
 
@@ -145,7 +151,10 @@ export class GenerationWorkerProcessor {
         imageCount: job.imageCount,
         parameters: job.parameters,
         referenceImages: references,
+        maskImage,
+        signal: abort.signal,
       });
+      providerCompleted = true;
       await this.assertNotCancelled(job.id);
       if (!result.images.length || result.images.length > job.imageCount) {
         throw new AiProviderError(
@@ -154,6 +163,8 @@ export class GenerationWorkerProcessor {
           false,
         );
       }
+      storingResults = true;
+      if (result.metadata) await db.update(aiGenerationJobs).set({ resultMetadata: result.metadata }).where(and(eq(aiGenerationJobs.id, job.id), eq(aiGenerationJobs.status, "running")));
 
       const storedResults: StoredGenerationAsset[] = [];
       for (const [ordinal, image] of result.images.entries()) {
@@ -196,18 +207,19 @@ export class GenerationWorkerProcessor {
         return this.finishCancellation(job.id);
       }
       const failure = safeFailure(error);
-      const canRetry = failure.retryable && job.attempts < Math.min(maxAttempts, job.maxAttempts);
+      const canRetry = !providerCompleted && failure.retryable && job.attempts < Math.min(maxAttempts, job.maxAttempts);
       await db.update(aiGenerationJobs).set({
         status: canRetry ? "queued" : "failed",
         progress: canRetry ? 0 : job.progress,
         heartbeatAt: null,
         finishedAt: canRetry ? null : new Date(),
-        errorCode: failure.code,
-        errorMessage: failure.message,
+        errorCode: storingResults ? "GENERATION_RESULT_STORAGE_FAILED" : failure.code,
+        errorMessage: storingResults ? "模型已返回结果，但图片未能完整保存到图床。为避免重复计费，此任务不会自动重新生图，请检查图床连接。" : failure.message,
         updatedAt: new Date(),
       }).where(and(eq(aiGenerationJobs.id, job.id), eq(aiGenerationJobs.status, "running")));
       throw error;
     } finally {
+      abort.abort();
       clearInterval(heartbeat);
     }
   }

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { IMAGE_GENERATION_QUALITIES } from "@/modules/ai/types";
+import { IMAGE_GENERATION_QUALITIES, IMAGE_OUTPUT_FORMATS, IMAGE_BACKGROUNDS } from "@/modules/ai/types";
 
 const generationQualitySchema = z
   .union([z.enum(IMAGE_GENERATION_QUALITIES), z.literal("standard")])
@@ -16,6 +16,9 @@ export const createGenerationSchema = z.object({
   width: z.number().int().min(256).max(3_840),
   height: z.number().int().min(256).max(3_840),
   quality: generationQualitySchema,
+  outputFormat: z.enum(IMAGE_OUTPUT_FORMATS).optional(),
+  background: z.enum(IMAGE_BACKGROUNDS).optional(),
+  outputCompression: z.number().int().min(0).max(100).optional(),
   imageCount: z.number().int().min(1).max(4),
 }).superRefine((value, context) => {
   if (value.characterImageIds.length && !value.characterProfileId) {
@@ -35,7 +38,7 @@ export const createGenerationSchema = z.object({
 });
 
 export type CreateGenerationFields = z.input<typeof createGenerationSchema>;
-export type CreateGenerationInput = CreateGenerationFields & { referenceImages?: Buffer[] };
+export type CreateGenerationInput = CreateGenerationFields & { referenceImages?: Buffer[]; maskImage?: Buffer };
 
 export const listGenerationsSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(30),

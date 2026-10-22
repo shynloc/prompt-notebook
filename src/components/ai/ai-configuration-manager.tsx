@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { getImageModelCapabilities } from "@/modules/ai/image-capabilities";
 
 type Capability = "prompt_optimization" | "image_generation" | "reverse_prompt";
 type Purpose = Capability | "term_analysis";
@@ -53,6 +55,7 @@ function emptyForm() {
     modelId: "",
     displayName: "",
     capabilities: ["prompt_optimization"] as Capability[],
+    defaultParameters: {} as Record<string, string | number | boolean>,
   };
 }
 
@@ -66,6 +69,7 @@ function responseMessage(body: unknown, fallback: string) {
 }
 
 export function AiConfigurationManager() {
+  const router = useRouter();
   const [configurations, setConfigurations] = useState<AiConfiguration[]>([]);
   const [preferences, setPreferences] = useState<Preference[]>([]);
   const [form, setForm] = useState(emptyForm);
@@ -75,6 +79,10 @@ export function AiConfigurationManager() {
   const [testingId, setTestingId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const imageCapabilities = useMemo(() => {
+    try { return getImageModelCapabilities(form.modelId, form.defaultParameters); }
+    catch { return getImageModelCapabilities("unknown"); }
+  }, [form.modelId, form.defaultParameters]);
 
   async function load() {
     const [configResponse, preferenceResponse] = await Promise.all([
@@ -82,7 +90,7 @@ export function AiConfigurationManager() {
       fetch("/api/v1/ai/preferences"),
     ]);
     if (configResponse.status === 401 || preferenceResponse.status === 401) {
-      window.location.assign("/sign-in?returnTo=/settings/ai");
+      router.replace("/sign-in?returnTo=/settings/ai");
       return;
     }
     if (!configResponse.ok || !preferenceResponse.ok) throw new Error("AI 配置加载失败，请稍后重试。");
@@ -98,7 +106,7 @@ export function AiConfigurationManager() {
     ]).then(async ([configResponse, preferenceResponse]) => {
       if (!active) return;
       if (configResponse.status === 401 || preferenceResponse.status === 401) {
-        window.location.assign("/sign-in?returnTo=/settings/ai");
+        router.replace("/sign-in?returnTo=/settings/ai");
         return;
       }
       if (!configResponse.ok || !preferenceResponse.ok) throw new Error();
@@ -107,7 +115,7 @@ export function AiConfigurationManager() {
     }).catch(() => { if (active) setError("AI 配置加载失败，请稍后重试。"); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [router]);
 
   const preferenceMap = useMemo(
     () => new Map(preferences.map((preference) => [preference.purpose, preference.modelProfileId])),
@@ -136,6 +144,7 @@ export function AiConfigurationManager() {
       modelId: configuration.modelId,
       displayName: configuration.displayName,
       capabilities: configuration.capabilities,
+      defaultParameters: { ...configuration.defaultParameters },
     });
     setMessage("");
     setError("");
@@ -161,6 +170,7 @@ export function AiConfigurationManager() {
       modelId: form.modelId,
       displayName: form.displayName || form.modelId,
       capabilities: form.capabilities,
+      defaultParameters: form.defaultParameters,
       ...(form.apiKey ? { apiKey: form.apiKey } : {}),
       ...(!editingId ? { providerType: "openai_compatible", enabled: true } : {}),
     };
@@ -198,7 +208,9 @@ export function AiConfigurationManager() {
       const response = await fetch(`/api/v1/ai/configurations/${configuration.id}/test`, { method: "POST" });
       const body = await response.json();
       if (!response.ok) throw new Error(responseMessage(body, "连接测试失败。"));
-      setMessage(`“${configuration.name}”连接成功，发现 ${body.data.availableModelIds.length} 个模型。`);
+      const availableModelIds = Array.isArray(body.data.availableModelIds) ? body.data.availableModelIds : [];
+      const listed = availableModelIds.includes(configuration.modelId);
+      setMessage(`“${configuration.name}”连接正常，${listed ? "所填模型已在模型列表中找到" : "模型列表未包含所填型号，请核对供应商说明"}。此测试未执行生图，具体参数支持以供应商实际接口为准。`);
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "连接测试失败。");
@@ -309,6 +321,38 @@ export function AiConfigurationManager() {
               ))}
             </div>
           </fieldset>
+          {form.capabilities.includes("image_generation") ? <fieldset>
+            <legend>生图兼容与默认输出</legend>
+            <div className="ai-form-grid">
+              <label>生图模型系列<select value={String(form.defaultParameters.imageModelFamily ?? "auto")} onChange={(event) => setForm((current) => {
+                const parameters = { ...current.defaultParameters };
+                if (event.target.value === "auto") delete parameters.imageModelFamily;
+                else parameters.imageModelFamily = event.target.value;
+                return { ...current, defaultParameters: parameters };
+              })}>
+                <option value="auto">自动识别 Model ID</option>
+                <option value="gpt-image-2.5">GPT Image 2.5</option>
+                <option value="gpt-image-2">GPT Image 2</option>
+                <option value="gpt-image-1">GPT Image 1 / 1.5</option>
+                <option value="dall-e-3">DALL·E 3</option>
+                <option value="custom">自定义兼容模型（未验证）</option>
+              </select></label>
+              <label>默认图片格式<select value={String(form.defaultParameters.output_format ?? "jpeg")} onChange={(event) => setForm((current) => {
+                const parameters: Record<string, string | number | boolean> = { ...current.defaultParameters, output_format: event.target.value };
+                if (event.target.value === "png") delete parameters.output_compression;
+                if (event.target.value === "jpeg" && parameters.background === "transparent") parameters.background = "opaque";
+                return { ...current, defaultParameters: parameters };
+              })}><option disabled={!imageCapabilities.formats.includes("png")} value="png">PNG</option><option disabled={!imageCapabilities.formats.includes("jpeg")} value="jpeg">JPEG</option><option disabled={!imageCapabilities.formats.includes("webp")} value="webp">WebP</option></select></label>
+              <label>默认图片背景<select value={String(form.defaultParameters.background ?? "auto")} onChange={(event) => setForm((current) => ({ ...current, defaultParameters: { ...current.defaultParameters, background: event.target.value } }))}><option value="auto">自动</option><option disabled={!imageCapabilities.backgrounds.includes("opaque")} value="opaque">不透明</option><option disabled={!imageCapabilities.transparency || (form.defaultParameters.output_format ?? "jpeg") === "jpeg"} value="transparent">透明（PNG / WebP）</option></select></label>
+              <label>默认压缩质量（0–100）<input disabled={!imageCapabilities.supportsCompression || form.defaultParameters.output_format === "png"} type="number" min={0} max={100} step={1} placeholder="留空由接口决定" value={typeof form.defaultParameters.output_compression === "number" ? form.defaultParameters.output_compression : ""} onChange={(event) => setForm((current) => {
+                const parameters = { ...current.defaultParameters };
+                if (event.target.value === "") delete parameters.output_compression;
+                else parameters.output_compression = Number(event.target.value);
+                return { ...current, defaultParameters: parameters };
+              })} /></label>
+            </div>
+            <p className="ai-security-note">供应商使用自定义型号名称时，可指定兼容系列。该选择只决定可用参数，不会验证供应商实际能力；JPEG 不支持透明背景，压缩质量仅适用于 JPEG / WebP。</p>
+          </fieldset> : null}
           <p className="ai-security-note">API Key 会在服务端加密保存，保存后不会再次显示完整内容。</p>
           <button className="primary-action" type="submit" disabled={saving}>{saving ? "正在保存…" : editingId ? "保存修改" : "加密保存配置"}</button>
         </form>

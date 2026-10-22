@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import {
@@ -12,6 +12,7 @@ import {
 import { GenerationCharacterPicker } from "@/components/characters/generation-character-picker";
 import { ReversePromptDialog, type ReversePromptSource, type ReversePromptValue } from "@/components/ai/reverse-prompt-workbench";
 import { storePromptHandoff, takePromptHandoff } from "@/modules/sync/prompt-handoff";
+import { getImageModelCapabilities, MAX_IMAGE_GENERATION_PROMPT_LENGTH, validateImageGenerationSettings } from "@/modules/ai/image-capabilities";
 import type { NoteImage, NoteView } from "@/components/notes/types";
 
 import {
@@ -22,12 +23,17 @@ import {
   type ImageResolutionTier,
 } from "./image-presets";
 import { activeStatuses, type GenerationAsset, type GenerationJob } from "./types";
+import { generationUsage, imageModelOptions, type ImageModelOption } from "./model-options";
+import { ImageMaskEditor } from "./image-mask-editor";
+import { prepareEditingImage } from "./editing-image";
 
 const qualityOptions = [
   { id: "auto", label: "智能", detail: "模型决定" },
   { id: "low", label: "草图", detail: "更快" },
   { id: "medium", label: "标准", detail: "均衡" },
   { id: "high", label: "精细", detail: "质量优先" },
+  { id: "xhigh", label: "超精细", detail: "更多细节" },
+  { id: "max", label: "最高", detail: "最高质量" },
 ] as const;
 
 function statusLabel(job: GenerationJob) {
@@ -86,6 +92,7 @@ function filenameFromDisposition(value: string | null, fallback: string) {
 }
 
 export function ImageHubWorkbench() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const sourceNoteId = searchParams.get("note");
   const sourceCharacterId = searchParams.get("character");
@@ -99,9 +106,22 @@ export function ImageHubWorkbench() {
   const [negativePrompt, setNegativePrompt] = useState("");
   const [aspectRatio, setAspectRatio] = useState<ImageAspectRatio>("1:1");
   const [resolution, setResolution] = useState<ImageResolutionTier>("1k");
+  const [explicitSize, setExplicitSize] = useState<{ width: number; height: number } | null>(null);
   const [quality, setQuality] = useState<GenerationJob["quality"]>("auto");
   const [imageCount, setImageCount] = useState(1);
+  const [models, setModels] = useState<ImageModelOption[]>([]);
+  const [modelProfileId, setModelProfileId] = useState("");
+  const [defaultModelProfileId, setDefaultModelProfileId] = useState("");
+  const [modelMessage, setModelMessage] = useState("");
+  const [loadingModels, setLoadingModels] = useState(true);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [outputFormat, setOutputFormat] = useState<"png" | "jpeg" | "webp">("png");
+  const [background, setBackground] = useState<"auto" | "opaque" | "transparent">("auto");
+  const [outputCompression, setOutputCompression] = useState<number | "">("");
   const [references, setReferences] = useState<File[]>([]);
+  const [mask, setMask] = useState<{ source: File; file: File } | null>(null);
+  const [maskEditorSource, setMaskEditorSource] = useState<File | null>(null);
+  const referenceSelectionRef = useRef({ references, characterImageIds: [] as string[], capabilities: getImageModelCapabilities("gpt-image-2") });
   const [characterProfileId, setCharacterProfileId] = useState<string>();
   const [characterImageIds, setCharacterImageIds] = useState<string[]>([]);
   const [jobs, setJobs] = useState<GenerationJob[]>([]);
@@ -117,9 +137,72 @@ export function ImageHubWorkbench() {
   const [reverseUndo, setReverseUndo] = useState<{ before: ReversePromptValue; after: ReversePromptValue } | null>(null);
   const [optimization, setOptimization] = useState<PromptOptimizationState | null>(null);
   const [optimizationUndo, setOptimizationUndo] = useState<{ before: string; after: string } | null>(null);
-  const { width, height } = imageSizeFor(aspectRatio, resolution);
+  const { width, height } = explicitSize ?? imageSizeFor(aspectRatio, resolution);
+  const selectedModel = models.find((model) => model.modelProfileId === (modelProfileId || defaultModelProfileId));
+  const capabilities = useMemo(() => {
+    try { return getImageModelCapabilities(selectedModel?.modelId ?? "gpt-image-2", selectedModel?.defaultParameters); }
+    catch { return getImageModelCapabilities("unknown"); }
+  }, [selectedModel]);
+  const appliedMask = mask && mask.source === references[0] && !characterProfileId && capabilities.supportsMask ? mask.file : null;
+  let settingsError = modelsLoaded && !selectedModel ? models.length ? "请选择本次任务使用的生图模型。" : "请先在 AI 设置中配置并启用生图模型。" : "";
+  if (selectedModel) {
+    try {
+      validateImageGenerationSettings({
+        modelId: selectedModel.modelId, parameters: selectedModel.defaultParameters,
+        width, height, quality, imageCount, outputFormat, background,
+        ...(outputFormat !== "png" && outputCompression !== "" ? { outputCompression } : {}),
+        prompt, negativePrompt, referenceImageCount: references.length + characterImageIds.length,
+      });
+    } catch (error) { settingsError = error instanceof Error ? error.message : "请检查当前模型的生成设置。"; }
+  }
   const referencePreviews = useMemo(() => references.map((file) => ({ file, url: URL.createObjectURL(file) })), [references]);
   const activeJobs = useMemo(() => jobs.filter((job) => activeStatuses.includes(job.status)), [jobs]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]);
+    void Promise.all([
+      fetch("/api/v1/ai/configurations", { cache: "no-store", signal }),
+      fetch("/api/v1/ai/preferences", { cache: "no-store", signal }),
+    ]).then(async ([configurationResponse, preferenceResponse]) => {
+      if (!configurationResponse.ok || !preferenceResponse.ok) throw new Error("配置暂时无法载入");
+      const [configurationBody, preferenceBody] = await Promise.all([configurationResponse.json(), preferenceResponse.json()]);
+      if (controller.signal.aborted) return;
+      const eligible = imageModelOptions(configurationBody.data);
+      setModels(eligible);
+      setModelsLoaded(true);
+      const preference = Array.isArray(preferenceBody.data)
+        ? preferenceBody.data.find((item: { purpose?: string }) => item.purpose === "image_generation") : null;
+      const selected = eligible.find((item) => item.modelProfileId === preference?.modelProfileId);
+      if (selected) {
+        setDefaultModelProfileId(selected.modelProfileId);
+        setModelProfileId(selected.modelProfileId);
+        applyModelDefaults(selected);
+      }
+      if (!eligible.length) setModelMessage("尚无已启用的生图模型，请先在 AI 设置中配置。");
+      else if (!selected) setModelMessage("请选择本次任务使用的模型；设置中的默认模型不会改变。");
+    }).catch(() => {
+      if (!controller.signal.aborted) setModelMessage("暂时无法载入模型选项，仍可使用设置中的默认模型提交任务。");
+    }).finally(() => { if (!controller.signal.aborted) setLoadingModels(false); });
+    return () => controller.abort();
+  }, []);
+
+  function applyModelDefaults(model: ImageModelOption) {
+    let nextCapabilities;
+    try { nextCapabilities = getImageModelCapabilities(model.modelId, model.defaultParameters); }
+    catch { nextCapabilities = getImageModelCapabilities("unknown"); }
+    const format = model.defaultParameters.output_format;
+    const nextFormat = nextCapabilities.formats.find((candidate) => candidate === format) ?? nextCapabilities.formats[0];
+    const configuredBackground = model.defaultParameters.background;
+    setOutputFormat(nextFormat);
+    setBackground(nextCapabilities.backgrounds.find((candidate) => candidate === configuredBackground && (nextFormat !== "jpeg" || candidate !== "transparent")) ?? "auto");
+    const compression = model.defaultParameters.output_compression;
+    setOutputCompression(nextFormat !== "png" && nextCapabilities.supportsCompression && typeof compression === "number" && Number.isInteger(compression) && compression >= 0 && compression <= 100 ? compression : "");
+    const defaultQuality = model.defaultParameters.quality;
+    setQuality(nextCapabilities.qualities.find((candidate) => candidate === defaultQuality) ?? "auto");
+    setImageCount((current) => Math.min(current, nextCapabilities.maxImageCount));
+    if (!nextCapabilities.supportsMask) { setMask(null); setMaskEditorSource(null); }
+  }
 
   function beginAction(key: string) {
     if (pendingActionKeys.current.has(key)) return false;
@@ -138,6 +221,7 @@ export function ImageHubWorkbench() {
   }
 
   useEffect(() => () => referencePreviews.forEach((preview) => URL.revokeObjectURL(preview.url)), [referencePreviews]);
+  useEffect(() => { referenceSelectionRef.current = { references, characterImageIds, capabilities }; }, [references, characterImageIds, capabilities]);
   useEffect(() => () => optimizationControllerRef.current?.abort(), []);
 
   useEffect(() => {
@@ -163,7 +247,7 @@ export function ImageHubWorkbench() {
         }
         const historyResponse = await fetch("/api/v1/generations?limit=30&status=all", { cache: "no-store" });
         if (historyResponse.status === 401) {
-          window.location.assign(`/sign-in?returnTo=${encodeURIComponent("/imagehub")}`);
+          router.replace(`/sign-in?returnTo=${encodeURIComponent("/imagehub")}`);
           return;
         }
         const historyBody = await historyResponse.json();
@@ -176,8 +260,8 @@ export function ImageHubWorkbench() {
             setTitle(note.title);
             setPrompt(note.prompt);
             setNegativePrompt(note.negativePrompt ?? "");
-            const character = note.characterProfiles.find((item) => item.role === "primary" && !item.archivedAt)
-              ?? note.characterProfiles.find((item) => !item.archivedAt);
+            const character = (note.characterProfiles ?? []).find((item) => item.role === "primary" && !item.archivedAt)
+              ?? (note.characterProfiles ?? []).find((item) => !item.archivedAt);
             await selectCharacter(character?.id);
           }
         } else {
@@ -214,7 +298,7 @@ export function ImageHubWorkbench() {
       }
     }
     void initialize();
-  }, [searchParams, sourceCharacterId, sourceNoteId]);
+  }, [router, searchParams, sourceCharacterId, sourceNoteId]);
 
   useEffect(() => {
     if (!activeJobs.length) {
@@ -242,10 +326,13 @@ export function ImageHubWorkbench() {
 
   async function generate(event: FormEvent) {
     event.preventDefault();
+    if (submitting) return;
     if (!prompt.trim()) {
       setMessage("请先输入用于测试的提示词。");
       return;
     }
+    if (settingsError) { setMessage(settingsError); return; }
+    if (!beginAction("generate")) return;
     setSubmitting(true);
     setMessage("");
     try {
@@ -260,8 +347,13 @@ export function ImageHubWorkbench() {
         imageCount,
         characterProfileId,
         characterImageIds,
+        ...(selectedModel ? { modelProfileId: selectedModel.modelProfileId } : {}),
+        outputFormat,
+        background,
+        ...(outputFormat !== "png" && outputCompression !== "" ? { outputCompression } : {}),
       }));
       references.forEach((file) => form.append("references", file));
+      if (appliedMask) form.set("mask", appliedMask);
       const response = await fetch("/api/v1/generations", { method: "POST", body: form });
       const body = await response.json();
       if (!response.ok) {
@@ -274,6 +366,7 @@ export function ImageHubWorkbench() {
       setMessage("无法连接生成服务，请检查网络后重试。");
     } finally {
       setSubmitting(false);
+      finishAction("generate");
     }
   }
 
@@ -413,7 +506,16 @@ export function ImageHubWorkbench() {
           tags: ["AI 生成"],
           images,
           characterProfiles: !withoutCharacter && job.characterProfile ? [{ id: job.characterProfile.id, role: "primary", sortOrder: 0 }] : [],
-          parameters: { generationJobId: job.id, width: job.width, height: job.height, quality: job.quality },
+          parameters: {
+            generationJobId: job.id,
+            width: job.width, height: job.height, quality: job.quality,
+            modelId: job.modelId ?? job.modelName,
+            ...(job.modelProfileId ? { modelProfileId: job.modelProfileId } : {}),
+            ...(job.providerType ? { providerType: job.providerType } : {}),
+            ...(job.parameters ? { request: job.parameters } : {}),
+            ...(job.resultMetadata ? { result: job.resultMetadata } : {}),
+            actualImages: images.map((image) => ({ width: image.width, height: image.height, mimeType: image.mimeType })),
+          },
         }),
       });
       const body = await response.json().catch(() => null);
@@ -496,6 +598,34 @@ export function ImageHubWorkbench() {
     }
   }
 
+  async function continueEditing(job: GenerationJob, asset: GenerationAsset) {
+    const key = "continue-edit";
+    if (!beginAction(key)) return;
+    feedback(job.id, "正在载入图片供继续编辑…");
+    try {
+      if (!capabilities.supportsReferences) throw new Error("当前模型不支持参考图，请先选择支持图片编辑的模型。");
+      if (!Number.isSafeInteger(asset.width) || !Number.isSafeInteger(asset.height) || asset.width < 1 || asset.height < 1 || asset.width * asset.height > 40_000_000) throw new Error("这张图片的像素过大，请下载后缩小再继续编辑。");
+      const response = await fetch(`/api/v1/generations/${job.id}/assets/${asset.id}/download`, { signal: AbortSignal.timeout(60_000) });
+      if (!response.ok) throw new Error(apiMessage(await response.json().catch(() => null), "无法读取生成作品。"));
+      const blob = await response.blob();
+      if (blob.size > 10 * 1024 * 1024) feedback(job.id, "正在将大图压缩为 WebP，保留原始尺寸和透明度…");
+      const file = await prepareEditingImage(blob, filenameFromDisposition(response.headers.get("content-disposition"), `edit-${asset.id}.${asset.mimeType.split("/")[1]}`), asset.mimeType);
+      const current = referenceSelectionRef.current;
+      if (!current.capabilities.supportsReferences) throw new Error("当前模型已切换且不支持参考图，请选择支持图片编辑的模型后重试。");
+      if (current.references.length + current.characterImageIds.length >= Math.min(current.capabilities.maxReferenceImages, 4)) {
+        throw new Error("参考图已满，请先移除一张图片，再继续编辑。");
+      }
+      setReferences((files) => [...files, file]);
+      setMask(null);
+      setMaskEditorSource(null);
+      feedback(job.id, "已加入参考图，当前提示词保持原样。请填写修改要求后开始生成。");
+      setMessage("已载入生成作品作为参考图，请在 Prompt 中填写这次的修改要求。");
+      document.getElementById("imagehub-prompt")?.focus();
+    } catch (error) {
+      feedback(job.id, error instanceof Error ? error.message : "图片载入失败，请稍后重试。");
+    } finally { finishAction(key); }
+  }
+
   async function copyPrompt(job: GenerationJob) {
     const key = `copy:${job.id}`;
     if (!beginAction(key)) return;
@@ -528,47 +658,84 @@ export function ImageHubWorkbench() {
         <form className="imagehub-console" onSubmit={generate}>
           <div className="imagehub-console__label"><span>01</span> 提示词控制台</div>
           {sourceNoteId ? <p className="imagehub-origin">已从笔记载入 · <Link href={`/notes/${sourceNoteId}/edit`}>返回编辑</Link></p> : null}
+          <label className="field"><span>本次生图模型</span><select aria-label="本次生图模型" disabled={loadingModels} value={modelProfileId} onChange={(event) => {
+            setModelProfileId(event.target.value);
+            const model = models.find((item) => item.modelProfileId === (event.target.value || defaultModelProfileId));
+            if (model) applyModelDefaults(model);
+            setModelMessage("已切换本次任务模型并载入默认输出设置；请确认画布与质量。");
+          }}><option value="">{loadingModels ? "正在加载模型…" : "使用设置中的默认模型"}</option>{models.map((model) => <option key={model.modelProfileId} value={model.modelProfileId}>{model.name}</option>)}</select></label>
+          {modelMessage ? <p className="imagehub-option-note">{modelMessage} <Link href="/settings/ai">管理 AI 模型</Link></p> : null}
+          {selectedModel ? <p className="imagehub-option-note">{capabilities.label}{!capabilities.known ? <> · 供应商能力尚未验证，请按接口文档选择兼容系列。 <Link href="/settings/ai">调整兼容设置</Link></> : null}</p> : null}
           <label className="field"><span>作品标题（保存笔记时使用）</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={200} placeholder="例如：冬夜灯塔实验" /></label>
-          <label className="field"><span>Prompt</span><textarea aria-label="Prompt" className="imagehub-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={50_000} required placeholder="描述主体、构图、环境、光线、镜头与材质……" /></label>
+          <label className="field"><span>Prompt</span><textarea id="imagehub-prompt" aria-label="Prompt" className="imagehub-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={MAX_IMAGE_GENERATION_PROMPT_LENGTH} required placeholder="描述主体、构图、环境、光线、镜头与材质……" /></label>
           <div className="imagehub-inline-actions">
             <button type="button" onClick={() => setReverse({})}>图片反推提示词</button>
             {reverseUndo && prompt === reverseUndo.after.prompt && negativePrompt === reverseUndo.after.negativePrompt ? <button type="button" onClick={() => { setPrompt(reverseUndo.before.prompt); setNegativePrompt(reverseUndo.before.negativePrompt); setReverseUndo(null); setMessage("已恢复反推前的输入。"); }}>撤销图片反推</button> : null}
             {optimizationUndo && prompt === optimizationUndo.after ? <button type="button" onClick={undoOptimization}>撤销 AI 优化</button> : null}
             <button aria-busy={optimization?.status === "loading"} disabled={optimization?.status === "loading"} type="button" onClick={() => void optimizePrompt()}>{optimization?.status === "loading" ? "AI 优化中…" : "✦ AI 优化提示词"}</button>
-            <span>{prompt.length.toLocaleString()} / 50,000</span>
+            <span>{prompt.length.toLocaleString()} / {MAX_IMAGE_GENERATION_PROMPT_LENGTH.toLocaleString()}</span>
           </div>
           <label className="field"><span>负面提示词</span><textarea aria-label="负面提示词" value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} maxLength={20_000} placeholder="watermark, blurry, malformed hands…" /></label>
 
-          <fieldset className="imagehub-options"><legend>画布比例</legend><div className="imagehub-segments imagehub-segments--ratios">{imageAspectRatios.map((ratio) => <button aria-pressed={aspectRatio === ratio.id} key={ratio.id} type="button" onClick={() => setAspectRatio(ratio.id)}><strong>{ratio.label}</strong><small>{ratio.id}</small></button>)}</div></fieldset>
+          {capabilities.supportsCustomSize ? <><fieldset className="imagehub-options"><legend>画布比例</legend><div className="imagehub-segments imagehub-segments--ratios">{imageAspectRatios.map((ratio) => <button aria-pressed={!explicitSize && aspectRatio === ratio.id} key={ratio.id} type="button" onClick={() => { setAspectRatio(ratio.id); setExplicitSize(null); }}><strong>{ratio.label}</strong><small>{ratio.id}</small></button>)}</div></fieldset>
           <fieldset className="imagehub-options"><legend>输出尺寸</legend><div className="imagehub-segments imagehub-segments--resolutions">{imageResolutionTiers.map((tier) => {
             const size = imageSizeFor(aspectRatio, tier.id);
-            return <button aria-pressed={resolution === tier.id} key={tier.id} type="button" onClick={() => setResolution(tier.id)}><strong>{tier.label}</strong><small>{size.width}×{size.height} · {tier.detail}</small></button>;
-          })}</div>{resolution === "4k" ? <p className="imagehub-option-note">4K/最大画布属于 GPT Image 2 实验性高分辨率输出，生成时间和费用会明显增加。</p> : null}</fieldset>
+            return <button aria-pressed={!explicitSize && resolution === tier.id} key={tier.id} type="button" onClick={() => { setResolution(tier.id); setExplicitSize(null); }}><strong>{tier.label}</strong><small>{size.width}×{size.height} · {tier.detail}</small></button>;
+          })}</div>{explicitSize ? <p className="imagehub-option-note">当前画布 {width}×{height}，可点击比例或尺寸重新选择。</p> : resolution === "4k" ? <p className="imagehub-option-note">4K/最大画布仍属供应商实验能力，生成时间和费用通常会增加；渲染质量可独立选择。</p> : null}</fieldset></> : <fieldset className="imagehub-options"><legend>该模型可用尺寸</legend><div className="imagehub-segments">{capabilities.sizes.map((size) => {
+            const [sizeWidth, sizeHeight] = size.split("x").map(Number);
+            return <button key={size} type="button" aria-pressed={width === sizeWidth && height === sizeHeight} onClick={() => setExplicitSize({ width: sizeWidth, height: sizeHeight })}><strong>{sizeWidth === sizeHeight ? "方形" : sizeWidth > sizeHeight ? "横版" : "竖版"}</strong><small>{sizeWidth}×{sizeHeight}</small></button>;
+          })}</div><p className="imagehub-option-note">当前型号使用固定尺寸，不会自动缩小或改变你的画布。</p></fieldset>}
           <div className="imagehub-settings-row">
-            <fieldset><legend>渲染质量</legend><div className="imagehub-choice">{qualityOptions.map((option) => <button aria-pressed={quality === option.id} key={option.id} type="button" onClick={() => setQuality(option.id)}><strong>{option.label}</strong><small>{option.detail}</small></button>)}</div></fieldset>
-            <label><span>张数</span><select value={imageCount} onChange={(event) => setImageCount(Number(event.target.value))}>{[1, 2, 3, 4].map((count) => <option key={count} value={count}>{count} 张</option>)}</select></label>
+            <fieldset><legend>渲染质量</legend><div className={`imagehub-choice${capabilities.qualities.length > 4 ? " imagehub-choice--extended" : ""}`}>{qualityOptions.filter((option) => capabilities.qualities.includes(option.id)).map((option) => <button aria-pressed={quality === option.id} key={option.id} type="button" onClick={() => setQuality(option.id)}><strong>{option.label}</strong><small>{option.detail}</small></button>)}</div></fieldset>
+            <label><span>张数</span><select value={imageCount} onChange={(event) => setImageCount(Number(event.target.value))}>{[1, 2, 3, 4].filter((count) => count <= capabilities.maxImageCount).map((count) => <option key={count} value={count}>{count} 张</option>)}</select></label>
+          </div>
+
+          <div className="imagehub-output-grid">
+            <label className="field"><span>图片格式</span><select aria-label="图片格式" value={outputFormat} onChange={(event) => {
+              const format = event.target.value as typeof outputFormat;
+              setOutputFormat(format);
+              if (format === "jpeg" && background === "transparent") { setBackground("opaque"); setMessage("JPEG 不支持透明背景，已切换为不透明。"); }
+            }}>{capabilities.formats.map((format) => <option key={format} value={format}>{format.toUpperCase()}</option>)}</select></label>
+            <label className="field"><span>图片背景</span><select aria-label="图片背景" value={background} onChange={(event) => setBackground(event.target.value as typeof background)}>{capabilities.backgrounds.map((value) => <option key={value} disabled={value === "transparent" && outputFormat === "jpeg"} value={value}>{value === "auto" ? "自动" : value === "opaque" ? "不透明" : "透明"}</option>)}</select></label>
+            {outputFormat !== "png" && capabilities.supportsCompression ? <label className="field"><span>压缩质量（0–100）</span><input aria-label="压缩质量" type="number" min={0} max={100} step={1} value={outputCompression} placeholder="默认 90" onChange={(event) => setOutputCompression(event.target.value === "" ? "" : Number(event.target.value))} /></label> : null}
           </div>
 
           <div className="imagehub-references">
             <div><strong>角色与参考图片</strong><span>AI Model 垫图与本地参考图合计最多 4 张</span></div>
+            <p className="imagehub-option-note">上传参考图和蒙版每张最多 10 MiB，整个上传请求合计最多 44 MiB。</p>
             <GenerationCharacterPicker
               selectedProfileId={characterProfileId}
               selectedImageIds={characterImageIds}
-              maxImages={Math.max(0, 4 - references.length)}
+              maxImages={Math.max(0, Math.min(4, capabilities.maxReferenceImages) - references.length)}
               onChange={(profileId, imageIds) => {
                 setCharacterProfileId(profileId);
                 setCharacterImageIds(imageIds);
+                setMask(null); setMaskEditorSource(null);
               }}
             />
-            <label className="imagehub-upload"><input accept="image/jpeg,image/png,image/webp" multiple type="file" onChange={(event) => setReferences(Array.from(event.target.files ?? []).slice(0, Math.max(0, 4 - characterImageIds.length)))} /><span>＋ 上传其他参考图</span></label>
+            {!capabilities.supportsReferences ? <p className="imagehub-option-note">该模型不支持参考图；如已有图片，请先移除或切换模型。</p> : null}
+            <label className="imagehub-upload"><input aria-label="上传其他参考图" disabled={!capabilities.supportsReferences} accept="image/jpeg,image/png,image/webp" multiple type="file" onChange={(event) => {
+              const files = Array.from(event.target.files ?? []);
+              const available = Math.max(0, Math.min(4, capabilities.maxReferenceImages) - characterImageIds.length - references.length);
+              if (files.some((file) => file.size <= 0 || file.size > 10 * 1024 * 1024 || !["image/jpeg", "image/png", "image/webp"].includes(file.type))) { setMessage("请选择 JPEG / PNG / WebP 图片，每张须在 10MB 以内。"); event.target.value = ""; return; }
+              if (files.length > available) { setMessage(`参考图剩余 ${available} 个位置，请减少选择数量。`); event.target.value = ""; return; }
+              setReferences((current) => [...current, ...files]);
+              event.target.value = "";
+            }} /><span>＋ 上传其他参考图</span></label>
             {referencePreviews.length ? <div className="imagehub-reference-grid">{referencePreviews.map(({ file, url }, index) => <figure key={`${file.name}-${file.lastModified}`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={url} alt={`参考图 ${index + 1}`} />
-              <figcaption><button type="button" onClick={() => void reverseFrom(file)}>反推 Prompt</button><button aria-label={`移除参考图 ${index + 1}`} type="button" onClick={() => setReferences((current) => current.filter((candidate) => candidate !== file))}>移除</button></figcaption>
+              <figcaption><button type="button" onClick={() => void reverseFrom(file)}>反推 Prompt</button>{index === 0 && capabilities.supportsMask && !characterProfileId ? <button type="button" onClick={() => setMaskEditorSource(file)}>涂抹修改区域</button> : null}<button aria-label={`移除参考图 ${index + 1}`} type="button" onClick={() => {
+                if (index === 0) { setMask(null); setMaskEditorSource(null); }
+                setReferences((current) => current.filter((candidate) => candidate !== file));
+              }}>移除</button></figcaption>
             </figure>)}</div> : null}
+            {appliedMask ? <div className="imagehub-mask-status"><span>已设置局部修改区域 · 透明区域会被重绘</span><button type="button" onClick={() => setMask(null)}>清除修改区域</button></div> : null}
+            {capabilities.supportsMask && characterProfileId ? <p className="imagehub-option-note">局部涂抹编辑使用第一张上传参考图；请先清除 AI Model 角色选择。</p> : null}
           </div>
+          {settingsError ? <p className="imagehub-message" role="alert">{settingsError}</p> : null}
           {message ? <p className="imagehub-message" role="status">{message}</p> : null}
-          <button className="imagehub-generate" disabled={submitting} type="submit"><span>{submitting ? "正在建立任务…" : "开始生成"}</span><small>{width} × {height} · {imageCount} 张</small></button>
+          <button className="imagehub-generate" disabled={submitting || loadingModels || Boolean(settingsError)} type="submit"><span>{submitting ? "正在建立任务…" : loadingModels ? "正在加载模型…" : "开始生成"}</span><small>{width} × {height} · {imageCount} 张</small></button>
         </form>
 
         <section className="imagehub-results" aria-busy={loadingHistory}>
@@ -576,12 +743,15 @@ export function ImageHubWorkbench() {
           {loadingHistory ? <div className="imagehub-empty" role="status">正在显影历史任务…</div> : jobs.length ? <div className="imagehub-jobs">{jobs.map((job) => {
             const results = job.assets.filter((asset) => asset.role === "result");
             return <article className="imagehub-job" data-status={job.status} key={job.id}>
-              <header><div><span>{new Date(job.createdAt).toLocaleString("zh-CN")}</span><strong>{statusLabel(job)}</strong></div><small>{job.modelName} · {job.width}×{job.height}</small></header>
+              <header><div><span>{new Date(job.createdAt).toLocaleString("zh-CN")}</span><strong>{statusLabel(job)}</strong></div><small>{job.modelName} · {results.length ? `${results[0].width}×${results[0].height}` : `${job.width}×${job.height}`}</small></header>
+              {results.some((asset) => asset.width !== job.width || asset.height !== job.height) ? <p className="imagehub-option-note">请求尺寸 {job.width}×{job.height}；供应商返回的实际尺寸显示在各图片下方。</p> : null}
+              {generationUsage(job.resultMetadata) ? <p className="imagehub-option-note">{generationUsage(job.resultMetadata)}</p> : null}
               {activeStatuses.includes(job.status) ? <div className="imagehub-progress"><span style={{ width: `${Math.max(job.progress, 6)}%` }} /></div> : null}
               {results.length ? <div className="imagehub-filmstrip">{results.map((asset, index) => <figure key={asset.id}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={asset.thumbnailUrl || asset.displayUrl} alt={`生成作品 ${index + 1}`} />
-                <figcaption><button type="button" onClick={() => void reverseFrom(asset)}>反推</button><button aria-busy={pendingActions.has(`download:${asset.id}`)} disabled={pendingActions.has(`download:${asset.id}`)} type="button" onClick={() => void downloadAsset(job, asset)}>{pendingActions.has(`download:${asset.id}`) ? "准备中…" : "下载"}</button>{sourceNoteId ? <button aria-busy={pendingActions.has(`cover:${asset.id}`)} disabled={pendingActions.has(`cover:${asset.id}`)} type="button" onClick={() => void attachAsCover(job, asset)}>{pendingActions.has(`cover:${asset.id}`) ? "设置中…" : "设为封面"}</button> : null}</figcaption>
+                <span className="imagehub-asset-size">{asset.width}×{asset.height} · {asset.mimeType.replace("image/", "").toUpperCase()}</span>
+                <figcaption><button type="button" onClick={() => void reverseFrom(asset)}>反推</button><button aria-busy={pendingActions.has("continue-edit")} disabled={pendingActions.has("continue-edit") || !capabilities.supportsReferences} type="button" onClick={() => void continueEditing(job, asset)}>{pendingActions.has("continue-edit") ? "载入中…" : "继续编辑"}</button><button aria-busy={pendingActions.has(`download:${asset.id}`)} disabled={pendingActions.has(`download:${asset.id}`)} type="button" onClick={() => void downloadAsset(job, asset)}>{pendingActions.has(`download:${asset.id}`) ? "准备中…" : "下载"}</button>{sourceNoteId ? <button aria-busy={pendingActions.has(`cover:${asset.id}`)} disabled={pendingActions.has(`cover:${asset.id}`)} type="button" onClick={() => void attachAsCover(job, asset)}>{pendingActions.has(`cover:${asset.id}`) ? "设置中…" : "设为封面"}</button> : null}</figcaption>
               </figure>)}</div> : <div className="imagehub-placeholder"><span>{job.status === "failed" ? "!" : "◌"}</span><p>{job.errorMessage || "任务正在等待图像结果"}</p></div>}
               {job.characterProfile ? <p className="imagehub-job__character">AI Model · {job.characterProfile.available ? <Link href={`/ai-models/${job.characterProfile.id}`}>{job.characterProfile.name}</Link> : <span>{job.characterProfile.name}（角色卡已删除）</span>} · {job.characterProfile.imageIds.length} 张角色垫图</p> : null}
               <p className="imagehub-job__prompt">{job.prompt}</p>
@@ -592,7 +762,9 @@ export function ImageHubWorkbench() {
         </section>
       </div>
 
-      {reverse ? <ReversePromptDialog initialSource={reverse.source} onClose={() => setReverse(null)} onUse={applyReverse} onAnalyzeTerms={(value) => { const id = storePromptHandoff("analyze", value); window.location.assign(`/library?tab=analyze&handoff=${id}`); }} /> : null}
+      {maskEditorSource ? <ImageMaskEditor source={maskEditorSource} onClose={() => setMaskEditorSource(null)} onApply={(file) => { setMask({ source: maskEditorSource, file }); setMaskEditorSource(null); setMessage("已设置修改区域，生成时会与首张参考图一同提交。"); }} /> : null}
+
+      {reverse ? <ReversePromptDialog initialSource={reverse.source} onClose={() => setReverse(null)} onUse={applyReverse} onAnalyzeTerms={(value) => { const id = storePromptHandoff("analyze", value); router.push(`/library?tab=analyze&handoff=${id}`); }} /> : null}
 
       {optimization ? <PromptOptimizationDialog state={optimization} currentPrompt={prompt} onApply={applyOptimization} onDiscard={discardOptimization} onRetry={(options) => void optimizePrompt(optimization.originalPrompt, options)} /> : null}
     </div>

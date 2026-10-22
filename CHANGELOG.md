@@ -4,6 +4,29 @@ All notable changes use the Keep a Changelog structure. Versions follow Semantic
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-22
+
+### Added
+
+- Added model-aware generation controls for GPT Image 2.5 Sunburst and Flare, including dated snapshots, six quality levels, native canvas sizes, output format, transparency and compression.
+- Added a per-generation model selector and configurable compatibility families for third-party aliases without changing the account default.
+- Added continue-editing from generated assets and a touch-friendly mask painter with undo, clear and full-resolution transparent PNG export.
+- Recorded sanitized provider usage/output metadata alongside requested settings and actual stored image dimensions.
+
+### Fixed
+
+- Removed silent legacy size substitution for unsupported models; invalid combinations are rejected before queueing.
+- Preserved generated images up to 32 MiB through image-host storage, direct downloads and note attachment metadata while retaining 10 MiB reference/mask limits.
+- Normalized EXIF-oriented phone references for mask editing while retaining stable original-input idempotency.
+- Kept uncertain upstream requests, completed generations with storage failures and stale running tasks from automatically generating again and risking duplicate charges.
+- Made cancellation atomic against concurrent completion and finalized stale interrupted cancellation requests so their history remains removable.
+
+### Security
+
+- Bounded generation request streams, validated PNG mask dimensions/alpha and kept mask assets isolated by owner.
+- Forwarded cancellation to in-flight providers, retained SSRF-safe media handling and limited persisted usage fields to validated counters.
+- Updated Vitest and Vite to patched releases; production dependency auditing remains a release gate.
+
 ## [1.7.0] - 2026-10-07
 
 ### Added

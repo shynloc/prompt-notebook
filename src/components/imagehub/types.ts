@@ -23,7 +23,12 @@ export interface GenerationJob {
   modelName: string;
   width: number;
   height: number;
-  quality: "auto" | "low" | "medium" | "high";
+  quality: "auto" | "low" | "medium" | "high" | "xhigh" | "max";
+  modelProfileId?: string | null;
+  modelId?: string;
+  providerType?: string;
+  parameters?: Record<string, unknown>;
+  resultMetadata?: Record<string, unknown>;
   imageCount: number;
   progress: number;
   errorMessage: string | null;

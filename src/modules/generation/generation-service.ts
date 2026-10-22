@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import sharp from "sharp";
 
 import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
@@ -14,6 +15,9 @@ import {
   generationCharacterReferences,
 } from "@/db/schema";
 import { ApiError } from "@/lib/api/errors";
+import { validateImageGenerationSettings } from "@/modules/ai/image-capabilities";
+import { AiProviderError } from "@/modules/ai/types";
+import { inspectImage } from "@/modules/media/image-policy";
 import { REFERENCE_IMAGE_IDENTITY_STRATEGY } from "@/modules/characters/identity-strategy";
 
 import {
@@ -51,9 +55,10 @@ type CharacterReference = {
 function fingerprint(
   input: ReturnType<typeof createGenerationSchema.parse>,
   referenceImages: Buffer[],
+  maskImage?: Buffer,
 ) {
   const referenceHashes = referenceImages.map((data) => createHash("sha256").update(data).digest("hex"));
-  return createHash("sha256").update(JSON.stringify({ ...input, referenceHashes })).digest("hex");
+  return createHash("sha256").update(JSON.stringify({ ...input, referenceHashes, ...(maskImage ? { maskHash: createHash("sha256").update(maskImage).digest("hex") } : {}) })).digest("hex");
 }
 
 function legacyFingerprint(
@@ -81,16 +86,17 @@ export class GenerationService {
   }
 
   async create(userId: string, rawInput: CreateGenerationInput) {
-    const { referenceImages = [], ...fields } = rawInput;
+    const { referenceImages = [], maskImage, ...fields } = rawInput;
     if (referenceImages.length > 4) throw new ApiError(422, "GENERATION_REFERENCE_LIMIT", "At most 4 reference images are allowed");
     const input = createGenerationSchema.parse(fields);
+    const preparedReferenceImages = [...referenceImages];
     const existing = await this.findByIdempotencyKey(userId, input.idempotencyKey);
     if (existing) {
       return this.replay(
         userId,
         existing,
-        fingerprint(input, referenceImages),
-        input.characterProfileId ? undefined : legacyFingerprint(input, referenceImages),
+        fingerprint(input, referenceImages, maskImage),
+        input.characterProfileId || maskImage ? undefined : legacyFingerprint(input, referenceImages),
       );
     }
     const characterReferences = await this.resolveCharacterReferences(
@@ -102,7 +108,36 @@ export class GenerationService {
       throw new ApiError(422, "GENERATION_REFERENCE_LIMIT", "At most 4 reference images are allowed in total");
     }
     const selected = await this.resolveModel(userId, input.modelProfileId);
-    const requestFingerprint = fingerprint(input, referenceImages);
+    const parameters = { ...selected.defaultParameters,
+      ...(input.outputFormat !== undefined ? { output_format: input.outputFormat } : {}),
+      ...(input.background !== undefined ? { background: input.background } : {}),
+      ...(input.outputCompression !== undefined ? { output_compression: input.outputCompression } : {}),
+    };
+    try {
+      const effective = validateImageGenerationSettings({ ...input, modelId: selected.modelId, parameters, referenceImageCount: referenceImages.length + characterReferences.length, ...(maskImage ? { maskImage: { data: maskImage, mimeType: "image/png", filename: "mask.png" } } : {}) });
+      // Freeze the effective defaults alongside the selected model for reproducibility.
+      parameters.output_format = effective.outputFormat;
+      parameters.background = effective.background;
+      if (effective.outputCompression !== undefined) parameters.output_compression = effective.outputCompression;
+      else delete parameters.output_compression;
+      for (const reference of referenceImages) await inspectImage(reference);
+      if (maskImage) {
+        if (!referenceImages.length || input.characterProfileId) throw new Error("蒙版需要首张上传参考图，不能同时选择 AI Model");
+        // Browsers paint phone photos in their EXIF orientation. Normalize the
+        // reference too so its pixels and the exported mask share coordinates.
+        const sourceMetadata = await sharp(referenceImages[0]).metadata();
+        if (sourceMetadata.orientation && sourceMetadata.orientation !== 1) {
+          preparedReferenceImages[0] = await sharp(referenceImages[0]).rotate().toBuffer();
+        }
+        const source = await inspectImage(preparedReferenceImages[0]);
+        const mask = await inspectImage(maskImage);
+        const metadata = await sharp(maskImage).metadata();
+        if (mask.mimeType !== "image/png" || !metadata.hasAlpha || source.width !== mask.width || source.height !== mask.height) throw new Error("PNG 蒙版需要透明通道，且尺寸必须与第一张参考图一致");
+      }
+    } catch (error) {
+      throw new ApiError(422, "GENERATION_SETTINGS_INVALID", error instanceof AiProviderError || error instanceof Error ? error.message : "生图参数或参考图片无效");
+    }
+    const requestFingerprint = fingerprint(input, referenceImages, maskImage);
 
     const id = randomUUID();
     try {
@@ -159,7 +194,7 @@ export class GenerationService {
           height: input.height,
           quality: input.quality,
           imageCount: input.imageCount,
-          parameters: selected.defaultParameters,
+          parameters,
           maxAttempts: DEFAULT_MAX_ATTEMPTS,
           heartbeatAt: new Date(),
         });
@@ -169,7 +204,7 @@ export class GenerationService {
         userId,
         raced,
         requestFingerprint,
-        characterReferences.length ? undefined : legacyFingerprint(input, referenceImages),
+        characterReferences.length || maskImage ? undefined : legacyFingerprint(input, referenceImages),
       );
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
@@ -179,7 +214,7 @@ export class GenerationService {
         userId,
         raced,
         requestFingerprint,
-        characterReferences.length ? undefined : legacyFingerprint(input, referenceImages),
+        characterReferences.length || maskImage ? undefined : legacyFingerprint(input, referenceImages),
       );
     }
 
@@ -203,7 +238,7 @@ export class GenerationService {
       throw new ApiError(422, "CHARACTER_REFERENCE_UNAVAILABLE", "One or more AI Model reference images could not be read safely");
     }
 
-    const prepared: Array<{ ordinal: number; stored: StoredGenerationAsset; character?: CharacterReference }> = [];
+    const prepared: Array<{ ordinal: number; stored: StoredGenerationAsset; character?: CharacterReference; role?: "mask" }> = [];
     try {
       if (!await this.heartbeatPreparation(userId, id)) {
         throw new ApiError(409, "GENERATION_PREPARATION_CANCELLED", "The generation task was cancelled while references were being prepared");
@@ -219,7 +254,7 @@ export class GenerationService {
           throw new ApiError(409, "GENERATION_PREPARATION_CANCELLED", "The generation task was cancelled while references were being prepared");
         }
       }
-      for (const [localOrdinal, data] of referenceImages.entries()) {
+      for (const [localOrdinal, data] of preparedReferenceImages.entries()) {
         if (!await this.heartbeatPreparation(userId, id)) {
           throw new ApiError(409, "GENERATION_PREPARATION_CANCELLED", "The generation task was cancelled while references were being prepared");
         }
@@ -229,6 +264,10 @@ export class GenerationService {
         if (!await this.heartbeatPreparation(userId, id)) {
           throw new ApiError(409, "GENERATION_PREPARATION_CANCELLED", "The generation task was cancelled while references were being prepared");
         }
+      }
+      if (maskImage) {
+        if (!await this.heartbeatPreparation(userId, id)) throw new ApiError(409, "GENERATION_PREPARATION_CANCELLED", "任务准备已取消");
+        prepared.push({ ordinal: 0, role: "mask", stored: await this.media.upload(userId, id, "mask", 0, maskImage) });
       }
     } catch (error) {
       if (error instanceof ApiError && error.code === "GENERATION_PREPARATION_CANCELLED") throw error;
@@ -253,7 +292,7 @@ export class GenerationService {
           const [asset] = await transaction.insert(aiGenerationAssets).values({
             jobId: id,
             userId,
-            role: "reference",
+            role: item.role ?? "reference",
             ordinal: item.ordinal,
             ...item.stored,
           }).returning({ id: aiGenerationAssets.id });
@@ -326,25 +365,21 @@ export class GenerationService {
   }
 
   async cancel(userId: string, id: string) {
-    const current = await this.get(userId, id);
-    if (["cancelled", "succeeded", "failed"].includes(current.status)) return current;
     const now = new Date();
-    if (current.status === "running" || current.status === "cancel_requested") {
-      await db.update(aiGenerationJobs).set({
-        status: "cancel_requested",
-        cancelRequestedAt: current.cancelRequestedAt ?? now,
-        updatedAt: now,
-      }).where(and(eq(aiGenerationJobs.id, id), eq(aiGenerationJobs.userId, userId)));
-    } else {
-      await db.update(aiGenerationJobs).set({
-        status: "cancelled",
-        cancelRequestedAt: now,
-        finishedAt: now,
-        progress: 0,
-        updatedAt: now,
-      }).where(and(eq(aiGenerationJobs.id, id), eq(aiGenerationJobs.userId, userId)));
-      await this.queue.remove(id).catch(() => undefined);
-    }
+    // A single guarded transition cannot overwrite a concurrently completed job
+    // or mistake a newly claimed queued job for one that has not reached upstream.
+    const [updated] = await db.update(aiGenerationJobs).set({
+      status: sql`case when ${aiGenerationJobs.status} in ('preparing', 'queued') then 'cancelled' else 'cancel_requested' end`,
+      cancelRequestedAt: sql`coalesce(${aiGenerationJobs.cancelRequestedAt}, now())`,
+      finishedAt: sql`case when ${aiGenerationJobs.status} in ('preparing', 'queued') then now() else ${aiGenerationJobs.finishedAt} end`,
+      progress: sql`case when ${aiGenerationJobs.status} in ('preparing', 'queued') then 0 else ${aiGenerationJobs.progress} end`,
+      updatedAt: now,
+    }).where(and(
+      eq(aiGenerationJobs.id, id),
+      eq(aiGenerationJobs.userId, userId),
+      inArray(aiGenerationJobs.status, ["preparing", "queued", "running", "cancel_requested"]),
+    )).returning({ status: aiGenerationJobs.status });
+    if (updated?.status === "cancelled") await this.queue.remove(id).catch(() => undefined);
     return this.get(userId, id);
   }
 
@@ -390,6 +425,17 @@ export class GenerationService {
   async recoverStale(staleBefore: Date) {
     const now = new Date();
     await db.update(aiGenerationJobs).set({
+      status: "cancelled",
+      heartbeatAt: null,
+      finishedAt: now,
+      progress: 0,
+      updatedAt: now,
+    }).where(and(
+      eq(aiGenerationJobs.status, "cancel_requested"),
+      or(isNull(aiGenerationJobs.heartbeatAt), lt(aiGenerationJobs.heartbeatAt, staleBefore)),
+      lt(aiGenerationJobs.updatedAt, staleBefore),
+    ));
+    await db.update(aiGenerationJobs).set({
       status: "failed",
       heartbeatAt: null,
       finishedAt: now,
@@ -413,17 +459,17 @@ export class GenerationService {
       sql`${aiGenerationJobs.attempts} >= ${aiGenerationJobs.maxAttempts}`,
     ));
     const recovered = await db.update(aiGenerationJobs).set({
-      status: "queued",
+      status: "failed",
       heartbeatAt: null,
-      errorCode: "GENERATION_STALE_RECOVERED",
-      errorMessage: "A stale worker lease was recovered",
+      finishedAt: now,
+      errorCode: "GENERATION_PROVIDER_STATE_UNKNOWN",
+      errorMessage: "任务执行中断，供应商可能已接单。为避免重复计费，本任务不会自动重新生图，请检查供应商记录后再决定是否重试。",
       updatedAt: new Date(),
     }).where(and(
       eq(aiGenerationJobs.status, "running"),
       or(isNull(aiGenerationJobs.heartbeatAt), lt(aiGenerationJobs.heartbeatAt, staleBefore)),
       sql`${aiGenerationJobs.attempts} < ${aiGenerationJobs.maxAttempts}`,
     )).returning({ id: aiGenerationJobs.id, maxAttempts: aiGenerationJobs.maxAttempts });
-    for (const job of recovered) await this.queue.enqueue(job.id, job.maxAttempts);
     return recovered.map((job) => job.id);
   }
 

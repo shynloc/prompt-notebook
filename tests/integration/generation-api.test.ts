@@ -81,7 +81,7 @@ describe("generation API", () => {
     expect(list).toHaveBeenCalledWith(owner.userId, { limit: 12, status: "active" });
   });
 
-  it("accepts bounded multipart reference images and forwards only server buffers", async () => {
+  it("accepts GPT Image 2.5 multipart settings, reference images, and masks and forwards only server buffers", async () => {
     const owner = await sessionFor();
     const create = vi.fn(async (_userId: string, input: { referenceImages?: Buffer[] }) => ({ id: randomUUID(), count: input.referenceImages?.length }));
     const handlers = createGenerationHandlers({ create, list: vi.fn() });
@@ -91,10 +91,14 @@ describe("generation API", () => {
       prompt: "A paper observatory under a red moon",
       width: 3840,
       height: 2160,
-      quality: "high",
+      quality: "max",
+      outputFormat: "webp",
+      background: "transparent",
+      outputCompression: 68,
       imageCount: 1,
     }));
     form.append("references", new File([png], "reference.png", { type: "image/png" }));
+    form.set("mask", new File([png], "mask.png", { type: "image/png" }));
     const response = await handlers.POST(request(`${base}/api/v1/generations`, {
       cookie: owner.cookie,
       method: "POST",
@@ -105,8 +109,73 @@ describe("generation API", () => {
       prompt: "A paper observatory under a red moon",
       width: 3840,
       height: 2160,
-      referenceImages: [expect.any(Buffer)],
+      quality: "max",
+      outputFormat: "webp",
+      background: "transparent",
+      outputCompression: 68,
+      referenceImages: [png],
+      maskImage: png,
     }));
+  });
+
+  it("accepts xhigh JSON requests while ignoring client-supplied server buffer fields", async () => {
+    const owner = await sessionFor();
+    const create = vi.fn(async (_userId: string, input: { quality: string }) => ({ id: randomUUID(), quality: input.quality }));
+    const handlers = createGenerationHandlers({ create, list: vi.fn() });
+    const response = await handlers.POST(request(`${base}/api/v1/generations`, {
+      cookie: owner.cookie, method: "POST", type: "application/json",
+      body: JSON.stringify({
+        idempotencyKey: randomUUID(), prompt: "An editorial landscape", width: 1024, height: 1024,
+        quality: "xhigh", outputFormat: "png", background: "transparent", imageCount: 1,
+        referenceImages: ["client-controlled buffer"], maskImage: "client-controlled mask",
+      }),
+    }));
+    expect(response.status).toBe(201);
+    expect(create).toHaveBeenCalledWith(owner.userId, expect.objectContaining({
+      quality: "xhigh", outputFormat: "png", background: "transparent", referenceImages: [],
+    }));
+    expect(create.mock.calls[0][1]).not.toHaveProperty("maskImage");
+  });
+
+  it("rejects duplicate masks, non-file masks, empty masks, and unrecognized multipart fields before calling the service", async () => {
+    const owner = await sessionFor();
+    const create = vi.fn(async () => ({ id: randomUUID() }));
+    const handlers = createGenerationHandlers({ create, list: vi.fn() });
+    for (const scenario of ["duplicate", "text", "empty-file", "unknown"] as const) {
+      const form = new FormData();
+      form.set("payload", JSON.stringify({ idempotencyKey: randomUUID(), prompt: "Edit this picture", width: 1024, height: 1024, quality: "max", imageCount: 1 }));
+      form.append("references", new File([png], "reference.png", { type: "image/png" }));
+      if (scenario === "duplicate") {
+        form.append("mask", new File([png], "one.png", { type: "image/png" }));
+        form.append("mask", new File([png], "two.png", { type: "image/png" }));
+      } else if (scenario === "text") form.set("mask", "not a file");
+      else if (scenario === "empty-file") form.set("mask", new File([], "empty.png", { type: "image/png" }));
+      else form.set("apiKey", "must not be forwarded");
+      const response = await handlers.POST(request(`${base}/api/v1/generations`, { cookie: owner.cookie, method: "POST", body: form }));
+      expect(response.status, scenario).toBe(422);
+    }
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("enforces the 44 MiB combined multipart budget for references, mask, and form overhead", async () => {
+    const owner = await sessionFor();
+    const create = vi.fn(async () => ({ id: randomUUID() }));
+    const handlers = createGenerationHandlers({ create, list: vi.fn() });
+    const form = new FormData();
+    form.set("payload", JSON.stringify({ idempotencyKey: randomUUID(), prompt: "Edit within the total request budget", width: 1024, height: 1024, quality: "xhigh", imageCount: 1 }));
+    form.append("references", new File([png], "reference.png", { type: "image/png" }));
+    form.set("mask", new File([png], "mask.png", { type: "image/png" }));
+    // A declared content length isolates the admission boundary without allocating
+    // a 44 MiB fixture. Per-file 10 MiB limits do not override this shared budget.
+    const exact = request(`${base}/api/v1/generations`, { cookie: owner.cookie, method: "POST", body: form });
+    exact.headers.set("content-length", String(44 * 1024 * 1024));
+    expect((await handlers.POST(exact)).status).toBe(201);
+    const over = request(`${base}/api/v1/generations`, { cookie: owner.cookie, method: "POST", body: form });
+    over.headers.set("content-length", String(44 * 1024 * 1024 + 1));
+    const response = await handlers.POST(over);
+    expect(response.status).toBe(413);
+    expect((await response.json()).error.code).toBe("GENERATION_REQUEST_TOO_LARGE");
+    expect(create).toHaveBeenCalledOnce();
   });
 
   it("gets, cancels, and deletes history only for validated job IDs", async () => {

@@ -17,7 +17,7 @@ export const imageInputSchema = z.object({
   mimeType: z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]),
   width: z.number().int().min(1).max(20_000),
   height: z.number().int().min(1).max(20_000),
-  sizeBytes: z.number().int().min(0).max(20 * 1024 * 1024),
+  sizeBytes: z.number().int().min(0).max(32 * 1024 * 1024),
 });
 
 const noteFields = {

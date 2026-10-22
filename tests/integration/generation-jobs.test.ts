@@ -3,6 +3,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
+import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 
 import { POST as createConfiguration } from "@/app/api/v1/ai/configurations/route";
@@ -10,15 +11,16 @@ import { PATCH as patchPreference } from "@/app/api/v1/ai/preferences/route";
 import { db } from "@/db/client";
 import { aiGenerationAssets, aiGenerationJobs, generationCharacterReferences } from "@/db/schema";
 import { auth } from "@/lib/auth/server";
-import type { GenerationMediaStore, StoredGenerationAsset } from "@/modules/generation/generation-media-store";
+import type { GenerationAssetRole, GenerationMediaStore, StoredGenerationAsset } from "@/modules/generation/generation-media-store";
 import type { GenerationQueue } from "@/modules/generation/generation-queue";
 import { GenerationService } from "@/modules/generation/generation-service";
 import { createGenerationSchema } from "@/modules/generation/generation-schema";
 import { GenerationWorkerProcessor } from "@/modules/generation/generation-worker";
 import { AiProviderRegistry } from "@/modules/ai/provider-registry";
-import { AiProviderError } from "@/modules/ai/types";
+import { AiProviderError, type AiImageGenerationInput } from "@/modules/ai/types";
 import { CharacterService } from "@/modules/characters/character-service";
 import { createCharacterProfileSchema } from "@/modules/characters/character-schema";
+import { inspectImage } from "@/modules/media/image-policy";
 
 process.env.AI_CREDENTIAL_ENCRYPTION_KEYS = `test:${randomBytes(32).toString("base64url")}`;
 process.env.AI_CREDENTIAL_ACTIVE_KEY_ID = "test";
@@ -49,16 +51,20 @@ async function sessionFor(label: string) {
   return { cookie: `better-auth.session_token=${token}`, userId: session.user.id };
 }
 
-async function configureImageModel(cookie: string, secret = "sk-image-secret") {
+async function configureImageModel(cookie: string, secret = "sk-image-secret", options: {
+  modelId?: string;
+  defaultParameters?: Record<string, string | number | boolean>;
+} = {}) {
   const response = await createConfiguration(request(`${base}/api/v1/ai/configurations`, {
     cookie,
     body: {
       name: `Image model ${randomUUID()}`,
       baseUrl: "https://api.example.com/v1",
       apiKey: secret,
-      modelId: "image-model",
+      modelId: options.modelId ?? "image-model",
       displayName: "Image Model",
       capabilities: ["image_generation"],
+      defaultParameters: options.defaultParameters ?? {},
     },
   }));
   const created = (await response.json()).data;
@@ -84,26 +90,25 @@ class RecordingQueue implements GenerationQueue {
 }
 
 class RecordingMediaStore implements GenerationMediaStore {
-  uploads: Array<{ userId: string; jobId: string; role: "reference" | "result"; ordinal: number; data: Buffer }> = [];
+  uploads: Array<{ userId: string; jobId: string; role: GenerationAssetRole; ordinal: number; data: Buffer }> = [];
   private readonly stored = new Map<string, Buffer>();
 
   seed(objectKey: string, data: Buffer) {
     this.stored.set(objectKey, data);
   }
 
-  async upload(userId: string, jobId: string, role: "reference" | "result", ordinal: number, data: Buffer): Promise<StoredGenerationAsset> {
+  async upload(userId: string, jobId: string, role: GenerationAssetRole, ordinal: number, data: Buffer): Promise<StoredGenerationAsset> {
     this.uploads.push({ userId, jobId, role, ordinal, data });
-    const objectKey = `prompt-notebook/test/${jobId}/${role}/${ordinal}.png`;
+    const metadata = await inspectImage(data);
+    const extension = metadata.mimeType.split("/")[1];
+    const objectKey = `prompt-notebook/test/${jobId}/${role}/${ordinal}.${extension}`;
     this.stored.set(objectKey, data);
     return {
       storageProvider: "picbed",
       objectKey,
       displayUrl: `https://img.example.com/${objectKey}`,
       thumbnailUrl: `https://img.example.com/${objectKey}`,
-      mimeType: "image/png",
-      width: 1,
-      height: 1,
-      sizeBytes: data.length,
+      ...metadata,
     };
   }
 
@@ -132,7 +137,7 @@ class BlockingMediaStore extends RecordingMediaStore {
     this.releaseUpload();
   }
 
-  override async upload(userId: string, jobId: string, role: "reference" | "result", ordinal: number, data: Buffer) {
+  override async upload(userId: string, jobId: string, role: GenerationAssetRole, ordinal: number, data: Buffer) {
     this.markUploadStarted();
     await this.uploadGate;
     return super.upload(userId, jobId, role, ordinal, data);
@@ -152,6 +157,183 @@ function input(idempotencyKey: string = randomUUID()) {
 }
 
 describe("durable generation jobs", () => {
+  it.each(["xhigh", "max"] as const)("snapshots GPT Image 2.5 %s quality and effective output parameters for the worker", async (quality) => {
+    const owner = await sessionFor(`generation-25-${quality}`);
+    const modelId = quality === "xhigh" ? "gpt-image-2.5-sunburst" : "gpt-image-2.5-flare";
+    await configureImageModel(owner.cookie, "sk-image-secret", {
+      modelId,
+      defaultParameters: { output_format: "jpeg", background: "opaque", output_compression: 90 },
+    });
+    const queue = new RecordingQueue();
+    const media = new RecordingMediaStore();
+    const service = new GenerationService({ queue, media });
+    const created = await service.create(owner.userId, {
+      ...input(), quality, outputFormat: "webp", background: "transparent", outputCompression: 72,
+    });
+    expect(created).toMatchObject({
+      modelId, quality,
+      parameters: { output_format: "webp", background: "transparent", output_compression: 72 },
+    });
+    const metadata = {
+      size: "1024x1024", quality, outputFormat: "webp", background: "transparent",
+      usage: { input_tokens: 24, output_tokens: 15, total_tokens: 39 },
+    };
+    const generateImages = vi.fn(async () => ({ images: [{ data: png }], metadata }));
+    const processor = new GenerationWorkerProcessor({ media, providers: new AiProviderRegistry([{
+      type: "openai_compatible", testConnection: vi.fn(), generateImages,
+    }]) });
+    await expect(processor.process(created.id, { attempt: 1, maxAttempts: 3 })).resolves.toEqual({ status: "succeeded" });
+    expect(generateImages).toHaveBeenCalledWith(expect.objectContaining({
+      modelId, quality,
+      parameters: { output_format: "webp", background: "transparent", output_compression: 72 },
+    }));
+    expect((await service.get(owner.userId, created.id)).resultMetadata).toEqual(metadata);
+    expect((await service.list(owner.userId, { limit: 10, status: "succeeded" }))[0].resultMetadata).toEqual(metadata);
+  });
+
+  it("persists the PNG mask separately, includes its bytes in idempotency, and loads it for the worker", async () => {
+    const owner = await sessionFor("generation-mask-roundtrip");
+    await configureImageModel(owner.cookie, "sk-image-secret", { modelId: "gpt-image-2.5-flare" });
+    const maskImage = await sharp({ create: { width: 1, height: 1, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 0 } } }).png().toBuffer();
+    const differentMask = await sharp({ create: { width: 1, height: 1, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } } }).png().toBuffer();
+    const queue = new RecordingQueue();
+    const media = new RecordingMediaStore();
+    const service = new GenerationService({ queue, media });
+    const requestInput = { ...input(), quality: "max" as const, outputFormat: "png" as const, referenceImages: [png], maskImage };
+    const created = await service.create(owner.userId, requestInput);
+    expect(created.kind).toBe("image_to_image");
+    expect(created.assets.map((asset) => asset.role).sort()).toEqual(["mask", "reference"]);
+    expect(media.uploads).toEqual([
+      expect.objectContaining({ role: "reference", ordinal: 0, data: png }),
+      expect.objectContaining({ role: "mask", ordinal: 0, data: maskImage }),
+    ]);
+    await expect(service.create(owner.userId, requestInput)).resolves.toMatchObject({ id: created.id, replayed: true });
+    await expect(service.create(owner.userId, { ...requestInput, maskImage: differentMask }))
+      .rejects.toMatchObject({ status: 409, code: "GENERATION_IDEMPOTENCY_CONFLICT" });
+    expect(media.uploads).toHaveLength(2);
+    const generateImages = vi.fn(async () => ({ images: [{ data: png }] }));
+    const processor = new GenerationWorkerProcessor({ media, providers: new AiProviderRegistry([{
+      type: "openai_compatible", testConnection: vi.fn(), generateImages,
+    }]) });
+    await processor.process(created.id, { attempt: 1, maxAttempts: 3 });
+    expect(generateImages).toHaveBeenCalledWith(expect.objectContaining({
+      referenceImages: [{ data: png, mimeType: "image/png", filename: "reference-0.png" }],
+      maskImage: { data: maskImage, mimeType: "image/png", filename: "mask.png" },
+      parameters: { output_format: "png", background: "auto" },
+    }));
+    expect((await service.get(owner.userId, created.id)).assets.filter((asset) => asset.role === "result")).toHaveLength(1);
+  });
+
+  it("rejects wrong-size, non-alpha, non-PNG, and unreferenced masks before storing or queueing anything", async () => {
+    const owner = await sessionFor("generation-invalid-mask");
+    await configureImageModel(owner.cookie, "sk-image-secret", { modelId: "gpt-image-2.5-flare" });
+    const alphaMask = await sharp({ create: { width: 1, height: 1, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 0 } } }).png().toBuffer();
+    const wrongSize = await sharp({ create: { width: 2, height: 1, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 0 } } }).png().toBuffer();
+    const noAlpha = await sharp({ create: { width: 1, height: 1, channels: 3, background: "white" } }).png().toBuffer();
+    const jpegMask = await sharp(noAlpha).jpeg().toBuffer();
+    const queue = new RecordingQueue();
+    const media = new RecordingMediaStore();
+    const service = new GenerationService({ queue, media });
+    for (const invalid of [
+      { referenceImages: [png], maskImage: wrongSize },
+      { referenceImages: [png], maskImage: noAlpha },
+      { referenceImages: [png], maskImage: jpegMask },
+      { referenceImages: [], maskImage: alphaMask },
+    ]) {
+      await expect(service.create(owner.userId, { ...input(), ...invalid }))
+        .rejects.toMatchObject({ status: 422, code: "GENERATION_SETTINGS_INVALID" });
+    }
+    expect(media.uploads).toHaveLength(0);
+    expect(queue.enqueued).toHaveLength(0);
+    expect(await db.select().from(aiGenerationJobs).where(eq(aiGenerationJobs.userId, owner.userId))).toHaveLength(0);
+  });
+
+  it("normalizes an EXIF-rotated reference to match the browser-sized mask without changing original request idempotency", async () => {
+    const owner = await sessionFor("generation-exif-mask");
+    await configureImageModel(owner.cookie, "sk-image-secret", { modelId: "gpt-image-2.5-flare" });
+    const source = await sharp({ create: { width: 32, height: 16, channels: 3, background: "red" } })
+      .jpeg().withMetadata({ orientation: 6 }).toBuffer();
+    const maskImage = await sharp({ create: { width: 16, height: 32, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 0 } } }).png().toBuffer();
+    expect(await sharp(source).metadata()).toMatchObject({ width: 32, height: 16, orientation: 6 });
+    const media = new RecordingMediaStore();
+    const service = new GenerationService({ queue: new RecordingQueue(), media });
+    const requestInput = { ...input(), referenceImages: [source], maskImage };
+    const created = await service.create(owner.userId, requestInput);
+    const reference = created.assets.find((asset) => asset.role === "reference");
+    const mask = created.assets.find((asset) => asset.role === "mask");
+    expect(reference).toMatchObject({ width: 16, height: 32, mimeType: "image/jpeg" });
+    expect(mask).toMatchObject({ width: 16, height: 32, mimeType: "image/png" });
+    await expect(service.create(owner.userId, requestInput)).resolves.toMatchObject({ id: created.id, replayed: true });
+    expect(media.uploads).toHaveLength(2);
+    const generateImages = vi.fn<(input: AiImageGenerationInput) => Promise<{ images: Array<{ data: Buffer }> }>>(async () => ({ images: [{ data: png }] }));
+    const processor = new GenerationWorkerProcessor({ media, providers: new AiProviderRegistry([{
+      type: "openai_compatible", testConnection: vi.fn(), generateImages,
+    }]) });
+    await processor.process(created.id, { attempt: 1, maxAttempts: 3 });
+    const requestInputAtProvider = generateImages.mock.calls[0][0];
+    expect(requestInputAtProvider.referenceImages).toHaveLength(1);
+    expect(requestInputAtProvider.referenceImages[0].mimeType).toBe("image/jpeg");
+    const normalized = await sharp(Buffer.from(requestInputAtProvider.referenceImages[0].data)).metadata();
+    expect(normalized).toMatchObject({ width: 16, height: 32 });
+    expect(normalized.orientation ?? 1).toBe(1);
+    expect(requestInputAtProvider.maskImage).toMatchObject({ data: maskImage, mimeType: "image/png" });
+    expect(await sharp(Buffer.from(requestInputAtProvider.maskImage!.data)).metadata()).toMatchObject({ width: 16, height: 32, hasAlpha: true });
+  });
+
+  it("does not regenerate after the provider returned but result storage failed", async () => {
+    const owner = await sessionFor("generation-storage-no-regen");
+    await configureImageModel(owner.cookie, "sk-image-secret", { modelId: "gpt-image-2.5-sunburst" });
+    class FailingResultStore extends RecordingMediaStore {
+      override async upload(userId: string, jobId: string, role: GenerationAssetRole, ordinal: number, data: Buffer) {
+        if (role === "result") throw new Error("test storage unavailable");
+        return super.upload(userId, jobId, role, ordinal, data);
+      }
+    }
+    const queue = new RecordingQueue();
+    const media = new FailingResultStore();
+    const service = new GenerationService({ queue, media });
+    const created = await service.create(owner.userId, { ...input(), quality: "xhigh" });
+    const metadata = { quality: "xhigh", usage: { total_tokens: 150 } };
+    const generateImages = vi.fn(async () => ({ images: [{ data: png }], metadata }));
+    const processor = new GenerationWorkerProcessor({ media, providers: new AiProviderRegistry([{
+      type: "openai_compatible", testConnection: vi.fn(), generateImages,
+    }]) });
+    await expect(processor.process(created.id, { attempt: 1, maxAttempts: 3 })).rejects.toThrow("test storage unavailable");
+    const failed = await service.get(owner.userId, created.id);
+    expect(failed).toMatchObject({
+      status: "failed", attempts: 1, errorCode: "GENERATION_RESULT_STORAGE_FAILED", resultMetadata: metadata,
+    });
+    expect(failed.errorMessage).toContain("不会自动重新生图");
+    expect(failed.assets).toHaveLength(0);
+    expect(failed.finishedAt).not.toBeNull();
+    await expect(processor.process(created.id, { attempt: 2, maxAttempts: 3 })).resolves.toEqual({ status: "skipped" });
+    expect(generateImages).toHaveBeenCalledOnce();
+    queue.enqueued = [];
+    await service.reconcileQueued();
+    expect(queue.enqueued.some((job) => job.jobId === created.id)).toBe(false);
+  });
+
+  it.each([0, 2])("retains a provider response error for %i returned images instead of blaming result storage", async (imageCount) => {
+    const owner = await sessionFor(`generation-invalid-result-${imageCount}`);
+    await configureImageModel(owner.cookie);
+    const media = new RecordingMediaStore();
+    const service = new GenerationService({ queue: new RecordingQueue(), media });
+    const created = await service.create(owner.userId, input());
+    const generateImages = vi.fn(async () => ({ images: Array.from({ length: imageCount }, () => ({ data: png })) }));
+    const processor = new GenerationWorkerProcessor({ media, providers: new AiProviderRegistry([{
+      type: "openai_compatible", testConnection: vi.fn(), generateImages,
+    }]) });
+    await expect(processor.process(created.id, { attempt: 1, maxAttempts: 3 }))
+      .rejects.toMatchObject({ code: "AI_PROVIDER_RESPONSE_INVALID", retryable: false });
+    expect(await service.get(owner.userId, created.id)).toMatchObject({
+      status: "failed", attempts: 1, errorCode: "AI_PROVIDER_RESPONSE_INVALID",
+      errorMessage: "AI provider returned an unexpected number of images",
+    });
+    expect(media.uploads).toHaveLength(0);
+    await expect(processor.process(created.id, { attempt: 2, maxAttempts: 3 })).resolves.toEqual({ status: "skipped" });
+    expect(generateImages).toHaveBeenCalledOnce();
+  });
+
   it("snapshots owned AI Model images into durable generation references", async () => {
     const owner = await sessionFor("generation-character-owner");
     const other = await sessionFor("generation-character-other");
@@ -378,6 +560,38 @@ describe("durable generation jobs", () => {
     expect(media.uploads.filter((upload) => upload.role === "result")).toHaveLength(0);
   });
 
+  it("does not let a stale queued cancellation snapshot overwrite a concurrently completed job", async () => {
+    const owner = await sessionFor("generation-cancel-completed-race");
+    await configureImageModel(owner.cookie);
+    const queue = new RecordingQueue();
+    const service = new GenerationService({ queue, media: new RecordingMediaStore() });
+    const created = await service.create(owner.userId, input());
+    const staleQueued = await service.get(owner.userId, created.id);
+    const startedAt = new Date();
+    await db.update(aiGenerationJobs).set({ status: "running", attempts: 1, startedAt, heartbeatAt: startedAt })
+      .where(eq(aiGenerationJobs.id, created.id));
+    await db.update(aiGenerationJobs).set({ status: "succeeded", progress: 100, finishedAt: new Date(), heartbeatAt: null })
+      .where(eq(aiGenerationJobs.id, created.id));
+
+    const realGet = service.get.bind(service);
+    // The stale read is only a pre-update snapshot. A final read after an atomic
+    // state update must still observe the real database, not this fixture.
+    const updateObserver = vi.spyOn(db, "update");
+    const staleRead = vi.spyOn(service, "get").mockImplementation(async (userId, id) => {
+      if (!updateObserver.mock.calls.length) return staleQueued;
+      return realGet(userId, id);
+    });
+    try {
+      const result = await service.cancel(owner.userId, created.id);
+      expect(result.status).toBe("succeeded");
+      expect(await realGet(owner.userId, created.id)).toMatchObject({ status: "succeeded", progress: 100, attempts: 1 });
+      expect(queue.removed).not.toContain(created.id);
+    } finally {
+      staleRead.mockRestore();
+      updateObserver.mockRestore();
+    }
+  });
+
   it("replays pre-character idempotency fingerprints and consistently maps queue outages", async () => {
     const owner = await sessionFor("generation-legacy-idempotency");
     await configureImageModel(owner.cookie);
@@ -491,7 +705,7 @@ describe("durable generation jobs", () => {
     expect(await db.select().from(aiGenerationAssets).where(eq(aiGenerationAssets.jobId, created.id))).toHaveLength(0);
   });
 
-  it("recovers stale running jobs and re-enqueues them", async () => {
+  it("fails stale running jobs as provider-state unknown without requeueing, while queued and preparation recovery remain safe", async () => {
     const owner = await sessionFor("generation-recovery");
     await configureImageModel(owner.cookie);
     const queue = new RecordingQueue();
@@ -501,14 +715,23 @@ describe("durable generation jobs", () => {
     queue.enqueued = [];
     await db.update(aiGenerationJobs).set({
       status: "running",
+      attempts: 1,
       heartbeatAt: new Date(Date.now() - 10 * 60_000),
       startedAt: new Date(Date.now() - 11 * 60_000),
     }).where(and(eq(aiGenerationJobs.id, created.id), eq(aiGenerationJobs.userId, owner.userId)));
 
     const recovered = await service.recoverStale(new Date(Date.now() - 5 * 60_000));
-    expect(recovered).toEqual([created.id]);
-    expect(queue.enqueued).toEqual([{ jobId: created.id, maxAttempts: 3 }]);
-    expect((await service.get(owner.userId, created.id)).status).toBe("queued");
+    expect(recovered).toContain(created.id);
+    expect(queue.enqueued).toHaveLength(0);
+    expect(await service.get(owner.userId, created.id)).toMatchObject({
+      status: "failed", errorCode: "GENERATION_PROVIDER_STATE_UNKNOWN", attempts: 1, heartbeatAt: null,
+    });
+    const generateImages = vi.fn();
+    const processor = new GenerationWorkerProcessor({ media, providers: new AiProviderRegistry([{
+      type: "openai_compatible", testConnection: vi.fn(), generateImages,
+    }]) });
+    await expect(processor.process(created.id, { attempt: 2, maxAttempts: 3 })).resolves.toEqual({ status: "skipped" });
+    expect(generateImages).not.toHaveBeenCalled();
 
     const interrupted = await service.create(owner.userId, { ...input(), prompt: "Interrupted preparation" });
     await db.update(aiGenerationJobs).set({
@@ -521,6 +744,46 @@ describe("durable generation jobs", () => {
       status: "failed",
       errorCode: "GENERATION_PREPARATION_INTERRUPTED",
     });
+
+    const fresh = await service.create(owner.userId, { ...input(), prompt: "Fresh preparation" });
+    await db.update(aiGenerationJobs).set({ status: "preparing", heartbeatAt: new Date() }).where(eq(aiGenerationJobs.id, fresh.id));
+    const queued = await service.create(owner.userId, { ...input(), prompt: "Recover a safely queued request" });
+    const exhausted = await service.create(owner.userId, { ...input(), prompt: "Exhausted stale provider request" });
+    await db.update(aiGenerationJobs).set({ status: "running", attempts: 3, heartbeatAt: null }).where(eq(aiGenerationJobs.id, exhausted.id));
+    queue.enqueued = [];
+    await service.recoverStale(new Date(Date.now() - 5 * 60_000));
+    expect((await service.get(owner.userId, fresh.id)).status).toBe("preparing");
+    expect(await service.get(owner.userId, exhausted.id)).toMatchObject({ status: "failed", errorCode: "GENERATION_ATTEMPTS_EXHAUSTED" });
+    expect(await service.reconcileQueued()).toContain(queued.id);
+    expect(queue.enqueued).toContainEqual({ jobId: queued.id, maxAttempts: 3 });
+    expect(queue.enqueued.some((job) => [created.id, interrupted.id, fresh.id, exhausted.id].includes(job.jobId))).toBe(false);
+    expect((await service.get(owner.userId, queued.id)).status).toBe("queued");
+  });
+
+  it("finishes stale cancellation requests so history can be removed while leaving a fresh cancellation active", async () => {
+    const owner = await sessionFor("generation-stale-cancellation");
+    await configureImageModel(owner.cookie);
+    const queue = new RecordingQueue();
+    const service = new GenerationService({ queue, media: new RecordingMediaStore() });
+    const stale = await service.create(owner.userId, { ...input(), prompt: "Stale cancellation request" });
+    const fresh = await service.create(owner.userId, { ...input(), prompt: "Fresh cancellation request" });
+    const oldHeartbeat = new Date(Date.now() - 10 * 60_000);
+    await db.update(aiGenerationJobs).set({
+      status: "cancel_requested", attempts: 1, cancelRequestedAt: oldHeartbeat, heartbeatAt: oldHeartbeat, updatedAt: oldHeartbeat,
+    }).where(eq(aiGenerationJobs.id, stale.id));
+    await db.update(aiGenerationJobs).set({
+      status: "cancel_requested", attempts: 1, cancelRequestedAt: new Date(), heartbeatAt: new Date(), updatedAt: new Date(),
+    }).where(eq(aiGenerationJobs.id, fresh.id));
+
+    await service.recoverStale(new Date(Date.now() - 5 * 60_000));
+    const cancelled = await service.get(owner.userId, stale.id);
+    expect(cancelled).toMatchObject({ status: "cancelled", heartbeatAt: null });
+    expect(cancelled.finishedAt).not.toBeNull();
+    expect((await service.get(owner.userId, fresh.id)).status).toBe("cancel_requested");
+    await expect(service.removeHistory(owner.userId, stale.id)).resolves.toEqual({ id: stale.id, deleted: true });
+    expect(queue.removed).toContain(stale.id);
+    expect(await db.select().from(aiGenerationJobs).where(eq(aiGenerationJobs.id, stale.id))).toHaveLength(0);
+    await expect(service.removeHistory(owner.userId, fresh.id)).rejects.toMatchObject({ code: "GENERATION_STILL_ACTIVE", status: 409 });
   });
 
   it("limits active jobs per owner while allowing another owner to generate", async () => {

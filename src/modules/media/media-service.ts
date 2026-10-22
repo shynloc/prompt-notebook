@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { inspectImage } from "./image-policy";
+import { inspectImage, MAX_IMAGE_BYTES } from "./image-policy";
 import { MediaStorageConfigurationService } from "./media-storage-configuration-service";
 import type { StorageProvider } from "./storage-provider";
 import { resolveWebImage } from "./web-image-resolver";
@@ -15,8 +15,8 @@ export class MediaService {
     private readonly settings = new MediaStorageConfigurationService(),
   ) {}
 
-  async upload(userId: string, data: Buffer, pathSegments: string[] = []) {
-    const metadata = await inspectImage(data);
+  async upload(userId: string, data: Buffer, pathSegments: string[] = [], maximumBytes = MAX_IMAGE_BYTES) {
+    const metadata = await inspectImage(data, maximumBytes);
     const filename = `${randomUUID()}.${extension(metadata.mimeType)}`;
     const owner = createHash("sha256").update(userId).digest("hex").slice(0, 16);
     const safeSegments = pathSegments.map((segment) => segment.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80)).filter(Boolean);

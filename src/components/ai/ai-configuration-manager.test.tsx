@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AiConfigurationManager } from "./ai-configuration-manager";
 
+const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => router }));
+
 const configuration = {
   id: "11111111-1111-4111-8111-111111111111",
   name: "主要助手",
@@ -102,5 +105,41 @@ describe("AI configuration manager", () => {
     fireEvent.change(screen.getByLabelText("Model ID"), { target: { value: "backup-model" } });
     fireEvent.submit(screen.getByRole("button", { name: "加密保存配置" }).closest("form")!);
     expect(await screen.findByRole("alert")).toHaveTextContent("必须填写 API Key");
+  });
+
+  it("preserves unrelated defaults when editing image output capabilities", async () => {
+    const fetcher = mockFetch();
+    fetcher.mockImplementation(async (input, init) => {
+      if (String(input) === "/api/v1/ai/configurations" && !init?.method) {
+        return json({ data: [{ ...configuration, capabilities: ["image_generation"], defaultParameters: { temperature: 0.6, customFlag: true } }] });
+      }
+      if (String(input) === "/api/v1/ai/preferences") return json({ data: [] });
+      if (init?.method === "PATCH") return json({ data: configuration });
+      throw new Error("Unexpected request");
+    });
+    render(<AiConfigurationManager />);
+    await screen.findByRole("heading", { name: "主要助手" });
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    fireEvent.change(screen.getByLabelText("生图模型系列"), { target: { value: "gpt-image-2.5" } });
+    fireEvent.change(screen.getByLabelText("默认图片格式"), { target: { value: "webp" } });
+    fireEvent.change(screen.getByLabelText("默认图片背景"), { target: { value: "transparent" } });
+    fireEvent.change(screen.getByLabelText("默认压缩质量（0–100）"), { target: { value: "85" } });
+    fireEvent.submit(screen.getByRole("button", { name: "保存修改" }).closest("form")!);
+    await waitFor(() => {
+      const call = fetcher.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(JSON.parse(String(call?.[1]?.body)).defaultParameters).toEqual({
+        temperature: 0.6, customFlag: true, imageModelFamily: "gpt-image-2.5", output_format: "webp", background: "transparent", output_compression: 85,
+      });
+    });
+  });
+
+  it("explains that connection testing does not validate a paid generation", async () => {
+    const fetcher = mockFetch();
+    render(<AiConfigurationManager />);
+    await screen.findByRole("heading", { name: "主要助手" });
+    fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("所填模型已在模型列表中找到");
+    expect(screen.getByRole("status")).toHaveTextContent("此测试未执行生图");
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes("generations"))).toHaveLength(0);
   });
 });

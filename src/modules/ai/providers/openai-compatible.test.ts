@@ -31,9 +31,11 @@ describe("OpenAI-compatible provider adapter", () => {
     expect(JSON.stringify(result)).not.toContain("sk-private");
   });
 
-  it("maps requested aspect ratio and quality to supported provider values", () => {
-    expect(mapOpenAiImageSize("dall-e-3", 1600, 900)).toBe("1792x1024");
-    expect(mapOpenAiImageSize("gpt-image-1", 900, 1600)).toBe("1024x1536");
+  it("preserves supported sizes and rejects silent legacy size conversion", () => {
+    expect(mapOpenAiImageSize("dall-e-3", 1792, 1024)).toBe("1792x1024");
+    expect(mapOpenAiImageSize("gpt-image-1", 1024, 1536)).toBe("1024x1536");
+    expect(() => mapOpenAiImageSize("dall-e-3", 1600, 900)).toThrow(/不支持/);
+    expect(() => mapOpenAiImageSize("gpt-image-1", 900, 1600)).toThrow(/不支持/);
     expect(mapOpenAiImageSize("gpt-image-1", 1024, 1024)).toBe("1024x1024");
     expect(mapOpenAiImageSize("gpt-image-2", 3840, 2160)).toBe("3840x2160");
     expect(mapOpenAiImageSize("gpt-image-2-2026-04-21", 2160, 3840)).toBe("2160x3840");
@@ -41,6 +43,93 @@ describe("OpenAI-compatible provider adapter", () => {
     expect(mapOpenAiImageQuality("gpt-image-2", "auto")).toBe("auto");
     expect(mapOpenAiImageQuality("gpt-image-1", "medium")).toBe("medium");
     expect(() => mapOpenAiImageSize("gpt-image-2", 3840, 3840)).toThrow(/8,294,400/);
+  });
+
+  it.each(["gpt-image-2.5-sunburst", "gpt-image-2.5-flare-2026-09-08"])("sends the native 2.5 output contract for %s", async (modelId) => {
+    const fetcher = vi.fn(async (requestInput: RequestInfo | URL, requestInit?: RequestInit) => {
+      void requestInput;
+      void requestInit;
+      return Response.json({ data: [{ b64_json: "iVBORw0KGgo=" }] });
+    });
+    const adapter = new OpenAiCompatibleAdapter({ fetcher: fetcher as typeof fetch, resolver });
+    await adapter.generateImages({
+      baseUrl: "https://api.example.com/v1", apiKey: "key", modelId, prompt: "A glass city",
+      width: 2160, height: 3840, quality: "xhigh", imageCount: 1,
+      outputFormat: "webp", background: "transparent", outputCompression: 84,
+      parameters: { response_format: "ignored", output_format: "png", imageModelFamily: "auto", arbitrary: "never-forward" }, referenceImages: [],
+    });
+    const body = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+    expect(body).toMatchObject({ model: modelId, size: "2160x3840", quality: "xhigh", output_format: "webp", background: "transparent", output_compression: 84 });
+    expect(body).not.toHaveProperty("response_format");
+    expect(body).not.toHaveProperty("arbitrary");
+    expect(body).not.toHaveProperty("imageModelFamily");
+  });
+
+  it("validates unsupported settings before sending a potentially billed request", async () => {
+    const fetcher = vi.fn();
+    const adapter = new OpenAiCompatibleAdapter({ fetcher: fetcher as typeof fetch, resolver });
+    await expect(adapter.generateImages({
+      baseUrl: "https://api.example.com/v1", apiKey: "key", modelId: "gpt-image-1", prompt: "A glass city",
+      width: 3840, height: 2160, quality: "high", imageCount: 1, parameters: {}, referenceImages: [],
+    })).rejects.toThrow(/不支持 3840x2160/);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("uses 2.5 multipart output options and a fixed safe mask filename", async () => {
+    const fetcher = vi.fn(async (requestInput: RequestInfo | URL, requestInit?: RequestInit) => {
+      void requestInput;
+      void requestInit;
+      return Response.json({ data: [{ b64_json: "iVBORw0KGgo=" }] });
+    });
+    const adapter = new OpenAiCompatibleAdapter({ fetcher: fetcher as typeof fetch, resolver });
+    await adapter.generateImages({
+      baseUrl: "https://api.example.com/v1", apiKey: "key", modelId: "gpt-image-2.5-flare", prompt: "Blue shirt",
+      width: 1024, height: 1024, quality: "max", imageCount: 1,
+      outputFormat: "png", background: "transparent", parameters: {},
+      referenceImages: [{ data: Buffer.from("image"), filename: "unsafe\r\nHeader", mimeType: "image/png" }],
+      maskImage: { data: Buffer.from("mask"), filename: "also-unsafe\r\nHeader", mimeType: "image/png" },
+    });
+    const [url, init] = fetcher.mock.calls[0];
+    expect(String(url)).toMatch(/\/images\/edits$/);
+    const body = Buffer.from(init?.body as Buffer).toString();
+    expect(body).toContain('name="mask"; filename="mask.png"');
+    expect(body).toContain('name="output_format"\r\n\r\npng');
+    expect(body).toContain('name="quality"\r\n\r\nmax');
+    expect(body).not.toContain('name="output_compression"');
+    expect(body).not.toContain("unsafe");
+    expect(body).not.toContain("response_format");
+  });
+
+  it("keeps only bounded token counts and known output metadata", async () => {
+    const adapter = new OpenAiCompatibleAdapter({
+      fetcher: vi.fn(async () => Response.json({
+        data: [{ b64_json: "iVBORw0KGgo=" }], size: "2048x2048", quality: "max", output_format: "png", background: "transparent",
+        usage: { total_tokens: 150, input_tokens: 100, output_tokens: 50, raw_prompt: "private input", secret: "sk-private", input_tokens_details: { text_tokens: 50, image_tokens: 50, arbitrary: "private" }, output_tokens_details: { image_tokens: 50, text_tokens: -1, cached_tokens: 1e20 } },
+      })) as typeof fetch,
+      resolver,
+    });
+    const result = await adapter.generateImages({
+      baseUrl: "https://api.example.com/v1", apiKey: "sk-private", modelId: "gpt-image-2.5-sunburst", prompt: "A city",
+      width: 1024, height: 1024, quality: "max", imageCount: 1, outputFormat: "png", background: "transparent", parameters: {}, referenceImages: [],
+    });
+    expect(result.metadata).toEqual({
+      size: "2048x2048", quality: "max", outputFormat: "png", background: "transparent",
+      usage: { total_tokens: 150, input_tokens: 100, output_tokens: 50, input_tokens_details: { text_tokens: 50, image_tokens: 50 }, output_tokens_details: { image_tokens: 50 } },
+    });
+    expect(JSON.stringify(result.metadata)).not.toContain("private");
+  });
+
+  it("accepts generated images over the upload budget and rejects images over 32MiB", async () => {
+    const adapter = (bytes: number) => new OpenAiCompatibleAdapter({
+      fetcher: vi.fn(async () => Response.json({ data: [{ b64_json: Buffer.alloc(bytes, 1).toString("base64") }] })) as typeof fetch,
+      resolver,
+    });
+    const input = {
+      baseUrl: "https://api.example.com/v1", apiKey: "key", modelId: "gpt-image-2.5-flare", prompt: "A city",
+      width: 1024, height: 1024, quality: "high" as const, imageCount: 1, parameters: {}, referenceImages: [],
+    };
+    expect((await adapter(10 * 1024 * 1024 + 1).generateImages(input)).images[0].data.length).toBe(10 * 1024 * 1024 + 1);
+    await expect(adapter(32 * 1024 * 1024 + 1).generateImages(input)).rejects.toMatchObject({ code: "AI_PROVIDER_RESPONSE_INVALID", retryable: false });
   });
 
   it("sends the native GPT Image 2 4K contract without the legacy response_format", async () => {
@@ -227,6 +316,24 @@ describe("OpenAI-compatible provider adapter", () => {
       parameters: {},
       referenceImages: [],
     })).rejects.toMatchObject({ code: "AI_PROVIDER_TIMEOUT", retryable: false });
+  });
+
+  it.each(["dispatch", "response"])("does not retry an ambiguous image %s disconnect", async (stage) => {
+    const privateDetail = "private-upstream-address-or-key";
+    const fetcher = vi.fn(async () => {
+      if (stage === "dispatch") throw new TypeError(privateDetail);
+      return new Response(new ReadableStream({
+        start(controller) { controller.error(new TypeError(privateDetail)); },
+      }));
+    });
+    const adapter = new OpenAiCompatibleAdapter({ fetcher: fetcher as typeof fetch, resolver });
+    const result = adapter.generateImages({
+      baseUrl: "https://api.example.com/v1", apiKey: "key", modelId: "gpt-image-2.5-flare", prompt: "A lighthouse",
+      width: 1024, height: 1024, quality: "high", imageCount: 1, parameters: {}, referenceImages: [],
+    });
+    await expect(result).rejects.toMatchObject({ code: "AI_PROVIDER_UNAVAILABLE", retryable: false });
+    await expect(result).rejects.not.toThrow(privateDetail);
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces sanitized structured provider errors and request IDs", async () => {

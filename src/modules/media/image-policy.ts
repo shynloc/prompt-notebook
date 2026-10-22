@@ -7,6 +7,7 @@ import {
 import type { AddressResolver } from "@/modules/ai/outbound-url-policy";
 
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+export const MAX_GENERATED_IMAGE_BYTES = 32 * 1024 * 1024;
 export const MAX_IMAGE_PIXELS = 40_000_000;
 const MAX_REDIRECTS = 4;
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -22,9 +23,9 @@ export interface RemoteResourceDependencies {
   request?: typeof secureRemoteResourceFetch;
 }
 
-export async function inspectImage(data: Buffer) {
+export async function inspectImage(data: Buffer, maximumBytes = MAX_IMAGE_BYTES) {
   if (!data.length) throw new Error("图片内容为空");
-  if (data.length > MAX_IMAGE_BYTES) throw new Error("图片不能超过 10MB");
+  if (data.length > maximumBytes) throw new Error(`图片不能超过 ${maximumBytes / 1024 / 1024}MB`);
   const signature = signatures.find((entry) => entry.matches(data));
   if (!signature) throw new Error("只支持 JPEG、PNG 和 WebP 图片");
   const metadata = await sharp(data, { limitInputPixels: MAX_IMAGE_PIXELS, failOn: "error" }).metadata();
@@ -131,10 +132,10 @@ export async function fetchRemoteResource(
   throw new Error("远程地址重定向次数过多");
 }
 
-export async function downloadRemoteImage(value: string, dependencies: RemoteResourceDependencies = {}) {
+export async function downloadRemoteImage(value: string, dependencies: RemoteResourceDependencies = {}, maximumBytes = MAX_IMAGE_BYTES) {
   return (await fetchRemoteResource(value, {
     accept: "image/jpeg,image/png,image/webp",
-    maxBytes: MAX_IMAGE_BYTES,
+    maxBytes: maximumBytes,
     ...dependencies,
   })).data;
 }

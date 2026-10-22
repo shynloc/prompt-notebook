@@ -7,23 +7,42 @@ import { MAX_IMAGE_BYTES } from "@/modules/media/image-policy";
 import { GenerationService } from "@/modules/generation/generation-service";
 import { createGenerationSchema, listGenerationsSchema } from "@/modules/generation/generation-schema";
 
-const MAX_MULTIPART_BYTES = 4 * MAX_IMAGE_BYTES + 256_000;
+const MAX_MULTIPART_BYTES = 4 * MAX_IMAGE_BYTES + 4 * 1024 * 1024;
 
 interface GenerationApiService {
-  create(userId: string, input: z.infer<typeof createGenerationSchema> & { referenceImages?: Buffer[] }): Promise<unknown>;
+  create(userId: string, input: z.infer<typeof createGenerationSchema> & { referenceImages?: Buffer[]; maskImage?: Buffer }): Promise<unknown>;
   list(userId: string, input: z.infer<typeof listGenerationsSchema>): Promise<unknown>;
 }
 
 async function parseCreateRequest(request: Request) {
   const contentType = request.headers.get("content-type") ?? "";
-  if (!contentType.toLowerCase().includes("multipart/form-data")) {
-    return { ...createGenerationSchema.parse(await request.json()), referenceImages: [] };
-  }
+  const multipart = contentType.toLowerCase().includes("multipart/form-data");
+  const maximum = multipart ? MAX_MULTIPART_BYTES : 256_000;
   const declaredLength = Number(request.headers.get("content-length") ?? 0);
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_MULTIPART_BYTES) {
-    throw new ApiError(413, "GENERATION_REQUEST_TOO_LARGE", "The generation request is too large");
+  if (declaredLength > maximum) throw new ApiError(413, "GENERATION_REQUEST_TOO_LARGE", "请求体过大，请减少参考图片或蒙版文件大小");
+  const reader = request.body?.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (reader) {
+      if (request.signal.aborted) throw new ApiError(499, "REQUEST_CANCELLED", "请求已取消");
+      const { value, done } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maximum) { await reader.cancel(); throw new ApiError(413, "GENERATION_REQUEST_TOO_LARGE", "请求体过大，请减少参考图片或蒙版文件大小"); }
+      chunks.push(value);
+    }
+  } finally { reader?.releaseLock(); }
+  const bytes = Buffer.concat(chunks);
+  if (!contentType.toLowerCase().includes("multipart/form-data")) {
+    return { ...createGenerationSchema.parse(JSON.parse(bytes.toString("utf8"))), referenceImages: [] };
   }
-  const form = await request.formData();
+  let form: FormData;
+  try { form = await new Response(new Uint8Array(bytes), { headers: { "content-type": contentType } }).formData(); }
+  catch { throw new ApiError(422, "GENERATION_PAYLOAD_INVALID", "生图表单无效"); }
+  for (const key of new Set(form.keys())) {
+    if (!["payload", "references", "mask"].includes(key) || (key !== "references" && form.getAll(key).length !== 1)) throw new ApiError(422, "GENERATION_PAYLOAD_INVALID", "生图表单包含重复或无效字段");
+  }
   const rawPayload = form.get("payload");
   if (typeof rawPayload !== "string") throw new ApiError(422, "GENERATION_PAYLOAD_REQUIRED", "Generation settings are required");
   let payload: unknown;
@@ -42,7 +61,9 @@ async function parseCreateRequest(request: Request) {
     }
     referenceImages.push(Buffer.from(await candidate.arrayBuffer()));
   }
-  return { ...createGenerationSchema.parse(payload), referenceImages };
+  const mask = form.get("mask");
+  if (form.has("mask") && (!(mask instanceof File) || mask.size <= 0 || mask.size > MAX_IMAGE_BYTES)) throw new ApiError(422, "GENERATION_MASK_INVALID", "请选择不超过 10MB 的 PNG 蒙版");
+  return { ...createGenerationSchema.parse(payload), referenceImages, ...(mask instanceof File ? { maskImage: Buffer.from(await mask.arrayBuffer()) } : {}) };
 }
 
 let defaultService: GenerationService | undefined;

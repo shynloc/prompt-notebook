@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 
-import { MAX_IMAGE_BYTES } from "@/modules/media/image-policy";
+import { MAX_GENERATED_IMAGE_BYTES, MAX_IMAGE_BYTES } from "@/modules/media/image-policy";
+
+import { getImageModelCapabilities, validateImageGenerationSettings, validateImageModelSize } from "../image-capabilities";
 
 import type { AddressResolver } from "../outbound-url-policy";
 import { validateOutboundBaseUrl } from "../outbound-url-policy";
@@ -24,7 +26,6 @@ const DEFAULT_REVERSE_PROMPT_TIMEOUT_MS = 120_000;
 const DEFAULT_IMAGE_TIMEOUT_MS = 600_000;
 const DEFAULT_CONNECTION_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BYTES = 256_000;
-const MAX_IMAGE_RESPONSE_BYTES = MAX_IMAGE_BYTES * 6;
 const MAX_ERROR_RESPONSE_BYTES = 32_000;
 
 type Fetcher = typeof fetch;
@@ -151,49 +152,23 @@ function boundedOptimizationParameters(parameters: Record<string, string | numbe
   return bounded;
 }
 
-function isGptImageModel(modelId: string) {
-  return modelId.toLowerCase().startsWith("gpt-image-");
+export function mapOpenAiImageSize(modelId: string, width: number, height: number, parameters = {}) {
+  return validateImageModelSize(getImageModelCapabilities(modelId, parameters), width, height);
 }
 
-function isGptImage2Model(modelId: string) {
-  return modelId.toLowerCase() === "gpt-image-2" || modelId.toLowerCase().startsWith("gpt-image-2-");
-}
-
-function assertGptImage2Size(width: number, height: number) {
-  const longEdge = Math.max(width, height);
-  const shortEdge = Math.min(width, height);
-  const pixels = width * height;
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width % 16 !== 0 || height % 16 !== 0 ||
-    longEdge > 3_840 || longEdge / shortEdge > 3 || pixels < 655_360 || pixels > 8_294_400) {
-    throw new AiProviderError(
-      "AI_PROVIDER_RESPONSE_INVALID",
-      "GPT Image 2 requires multiples-of-16 dimensions, a maximum 3840px edge, a ratio up to 3:1, and 655,360–8,294,400 total pixels",
-      false,
-    );
+export function mapOpenAiImageQuality(modelId: string, quality: ImageGenerationQuality, parameters = {}) {
+  const capabilities = getImageModelCapabilities(modelId, parameters);
+  if (!capabilities.qualities.includes(quality)) {
+    throw new AiProviderError("AI_PROVIDER_RESPONSE_INVALID", `${capabilities.label} 不支持 ${quality} 质量`, false);
   }
-}
-
-export function mapOpenAiImageSize(modelId: string, width: number, height: number) {
-  if (isGptImage2Model(modelId)) {
-    assertGptImage2Size(width, height);
-    return `${width}x${height}`;
-  }
-  const dallE3 = modelId.toLowerCase().includes("dall-e-3");
-  if (width === height) return "1024x1024";
-  if (dallE3) return width > height ? "1792x1024" : "1024x1792";
-  return width > height ? "1536x1024" : "1024x1536";
-}
-
-export function mapOpenAiImageQuality(modelId: string, quality: ImageGenerationQuality) {
-  if (modelId.toLowerCase().includes("dall-e")) return quality === "high" ? "hd" : "standard";
-  return quality;
+  return capabilities.profileId === "dall-e-3" ? quality === "high" ? "hd" : "standard" : quality;
 }
 
 function generationPrompt(prompt: string, negativePrompt?: string | null) {
   return negativePrompt?.trim() ? `${prompt}\n\nAvoid: ${negativePrompt.trim()}` : prompt;
 }
 
-function multipartGenerationBody(input: AiImageGenerationInput, size: string, quality: string) {
+function multipartGenerationBody(input: AiImageGenerationInput, settings: ReturnType<typeof validateImageGenerationSettings>) {
   const boundary = `prompt-notebook-${randomBytes(16).toString("hex")}`;
   const chunks: Buffer[] = [];
   const field = (name: string, value: string) => {
@@ -204,14 +179,10 @@ function multipartGenerationBody(input: AiImageGenerationInput, size: string, qu
   };
   field("model", input.modelId);
   field("prompt", generationPrompt(input.prompt, input.negativePrompt));
-  field("size", size);
-  field("quality", quality);
+  field("size", settings.size);
+  field("quality", settings.quality);
   field("n", String(input.imageCount));
-  if (!isGptImageModel(input.modelId)) field("response_format", "b64_json");
-  if (isGptImage2Model(input.modelId)) {
-    field("output_format", "jpeg");
-    field("output_compression", "90");
-  }
+  for (const [name, value] of Object.entries(settings.providerOptions)) field(name, String(value));
   for (const [index, image] of input.referenceImages.entries()) {
     chunks.push(Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="image[]"; filename="reference-${index}"\r\nContent-Type: ${image.mimeType}\r\n\r\n`,
@@ -220,23 +191,70 @@ function multipartGenerationBody(input: AiImageGenerationInput, size: string, qu
     chunks.push(Buffer.from(image.data));
     chunks.push(Buffer.from("\r\n"));
   }
+  if (input.maskImage) {
+    chunks.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="mask"; filename="mask.png"\r\nContent-Type: image/png\r\n\r\n`,
+      "utf8",
+    ));
+    chunks.push(Buffer.from(input.maskImage.data));
+    chunks.push(Buffer.from("\r\n"));
+  }
   chunks.push(Buffer.from(`--${boundary}--\r\n`));
   return { body: Buffer.concat(chunks), contentType: `multipart/form-data; boundary=${boundary}` };
 }
 
 function decodeImage(value: string) {
-  if (!/^[a-zA-Z0-9+/=_-]+$/.test(value)) {
-    throw new AiProviderError("AI_PROVIDER_RESPONSE_INVALID", "AI provider returned invalid image data", false);
-  }
-  const estimatedBytes = Math.floor((value.length * 3) / 4);
-  if (estimatedBytes > MAX_IMAGE_BYTES) {
+  const estimatedBytes = Math.floor((value.length * 3) / 4) - (value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0);
+  if (estimatedBytes > MAX_GENERATED_IMAGE_BYTES) {
     throw new AiProviderError("AI_PROVIDER_RESPONSE_INVALID", "AI provider returned an image that is too large", false);
   }
+  if (!value.length || !/^[a-zA-Z0-9+/_-]+={0,2}$/.test(value) || value.length % 4 === 1 || (value.includes("=") && value.length % 4 !== 0)) {
+    throw new AiProviderError("AI_PROVIDER_RESPONSE_INVALID", "AI provider returned invalid image data", false);
+  }
   const data = Buffer.from(value, value.includes("-") || value.includes("_") ? "base64url" : "base64");
-  if (!data.length || data.length > MAX_IMAGE_BYTES) {
+  if (!data.length || data.length > MAX_GENERATED_IMAGE_BYTES) {
     throw new AiProviderError("AI_PROVIDER_RESPONSE_INVALID", "AI provider returned unusable image data", false);
   }
   return data;
+}
+
+const USAGE_COUNT_KEYS = ["total_tokens", "input_tokens", "output_tokens", "text_tokens", "image_tokens", "cached_tokens"] as const;
+
+function boundedUsageCounts(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const safe: Record<string, unknown> = {};
+  for (const key of USAGE_COUNT_KEYS) {
+    const count = record[key];
+    if (typeof count === "number" && Number.isSafeInteger(count) && count >= 0 && count <= 1_000_000_000_000) safe[key] = count;
+  }
+  return Object.keys(safe).length ? safe : undefined;
+}
+
+function generationMetadata(payload: unknown, settings: ReturnType<typeof validateImageGenerationSettings>) {
+  const record = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  const metadata: NonNullable<AiImageGenerationResult["metadata"]> = {
+    size: settings.size,
+    quality: settings.quality,
+    outputFormat: settings.outputFormat,
+    background: settings.background,
+  };
+  // Accept only capability values, rather than persisting arbitrary strings from an upstream service.
+  if (typeof record.size === "string" && /^\d{1,4}x\d{1,4}$/.test(record.size)) {
+    const [width, height] = record.size.split("x").map(Number);
+    try { metadata.size = validateImageModelSize(settings.capabilities, width, height); } catch { /* Retain the requested size. */ }
+  }
+  if (typeof record.quality === "string" && [...settings.capabilities.qualities, "standard", "hd"].includes(record.quality)) metadata.quality = record.quality;
+  if (typeof record.output_format === "string" && settings.capabilities.formats.includes(record.output_format as "jpeg")) metadata.outputFormat = record.output_format;
+  if (typeof record.background === "string" && settings.capabilities.backgrounds.includes(record.background as "auto")) metadata.background = record.background;
+  const usage = boundedUsageCounts(record.usage);
+  const usageRecord = record.usage && typeof record.usage === "object" ? record.usage as Record<string, unknown> : {};
+  const inputDetails = boundedUsageCounts(usageRecord.input_tokens_details);
+  const outputDetails = boundedUsageCounts(usageRecord.output_tokens_details);
+  if (usage || inputDetails || outputDetails) {
+    metadata.usage = { ...usage, ...(inputDetails ? { input_tokens_details: inputDetails } : {}), ...(outputDetails ? { output_tokens_details: outputDetails } : {}) };
+  }
+  return metadata;
 }
 
 function chatContent(payload: unknown) {
@@ -277,10 +295,14 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
   }
 
   async generateImages(input: AiImageGenerationInput): Promise<AiImageGenerationResult> {
+    const settings = validateImageGenerationSettings(input);
+    for (const image of [...input.referenceImages, ...(input.maskImage ? [input.maskImage] : [])]) {
+      if (!image.data.length || image.data.length > MAX_IMAGE_BYTES || !["image/png", "image/jpeg", "image/webp"].includes(image.mimeType)) {
+        throw new AiProviderError("AI_PROVIDER_RESPONSE_INVALID", "参考图片和蒙版必须为不超过 10MB 的 PNG、JPEG 或 WebP 图片", false);
+      }
+    }
     const baseUrl = await validateOutboundBaseUrl(input.baseUrl, this.resolver);
-    const size = mapOpenAiImageSize(input.modelId, input.width, input.height);
-    const quality = mapOpenAiImageQuality(input.modelId, input.quality);
-    const multipart = input.referenceImages.length ? multipartGenerationBody(input, size, quality) : null;
+    const multipart = input.referenceImages.length ? multipartGenerationBody(input, settings) : null;
     const url = endpoint(baseUrl, input.referenceImages.length ? "images/edits" : "images/generations");
     const init: RequestInit = {
       method: "POST",
@@ -291,11 +313,10 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
       body: multipart?.body ?? JSON.stringify({
         model: input.modelId,
         prompt: generationPrompt(input.prompt, input.negativePrompt),
-        size,
-        quality,
+        size: settings.size,
+        quality: settings.quality,
         n: input.imageCount,
-        ...(!isGptImageModel(input.modelId) ? { response_format: "b64_json" } : {}),
-        ...(isGptImage2Model(input.modelId) ? { output_format: "jpeg", output_compression: 90 } : {}),
+        ...settings.providerOptions,
       }),
       redirect: "manual",
       signal: requestSignal(this.imageTimeoutMs, input.signal),
@@ -314,13 +335,29 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
           false,
         );
       }
-      throw new AiProviderError("AI_PROVIDER_UNAVAILABLE", "AI provider could not be reached", true);
+      throw new AiProviderError(
+        "AI_PROVIDER_UNAVAILABLE",
+        "生图请求连接中断，供应商可能已接单。为避免重复计费，本任务不会自动重试",
+        false,
+      );
     }
     if (response.status >= 300 && response.status < 400) {
       throw new AiProviderError("AI_PROVIDER_REDIRECT_BLOCKED", "AI provider redirected the request", false);
     }
     if (!response.ok) throw await statusError(response, [input.apiKey]);
-    const text = await readLimitedText(response, MAX_IMAGE_RESPONSE_BYTES);
+    const maxResponseBytes = Math.ceil(MAX_GENERATED_IMAGE_BYTES / 3) * 4 * input.imageCount + MAX_RESPONSE_BYTES;
+    let text: string;
+    try {
+      text = await readLimitedText(response, maxResponseBytes);
+    } catch (error) {
+      if (error instanceof AiProviderError) throw error;
+      const timeout = error instanceof DOMException && error.name === "TimeoutError";
+      throw new AiProviderError(
+        timeout ? "AI_PROVIDER_TIMEOUT" : "AI_PROVIDER_UNAVAILABLE",
+        "生图结果接收中断，供应商可能已完成生成。为避免重复计费，本任务不会自动重试",
+        false,
+      );
+    }
     let payload: unknown;
     try {
       payload = JSON.parse(text);
@@ -346,7 +383,7 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
       }
       return { data: decodeImage(b64) };
     });
-    return { images };
+    return { images, metadata: generationMetadata(payload, settings) };
   }
 
   async reversePrompt(input: AiReversePromptInput): Promise<AiReversePromptResult> {

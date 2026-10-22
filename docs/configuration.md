@@ -31,11 +31,11 @@ BETTER_AUTH_IP_ADDRESS_HEADERS=x-real-ip
 
 `X-Real-IP` is safe in that configuration because Nginx assigns it from `$remote_addr` instead of forwarding a browser-supplied value. When Cloudflare or another CDN is in front of Nginx, configure Nginx `set_real_ip_from` and `real_ip_header` for the CDN's current published address ranges so `$remote_addr` becomes the verified visitor address. Do not list an arbitrary user-controlled header, and do not expose the application container port directly to the public internet.
 
-The bundled Nginx example allows a 45 MB request body. Keep an equivalent limit when using another reverse proxy: ImageHub accepts up to four 10 MB browser-uploaded reference images in one multipart request, plus form overhead. Individual image validation remains capped at 10 MB inside the application.
+The bundled Nginx example allows a 45 MB request body. Keep an equivalent limit when using another reverse proxy. ImageHub accepts up to four reference images and one mask; each file is limited to 10 MiB and the entire multipart request, including form overhead, to 44 MiB. Reduce file sizes when combining four large references with a mask. Generated output storage/downloads support up to 32 MiB per image; configure the image host to accept that size too. General uploads and remote-link imports remain limited to 10 MiB.
 
 Leaving the variable empty preserves Better Auth's safe fallback behavior, but a multi-hop `X-Forwarded-For` chain cannot then be attributed to one visitor and authentication requests may share a per-route rate-limit bucket. `npm run release:check -- --production` rejects that production configuration.
 
-The generation worker does not automatically retry an image request that reaches `AI_IMAGE_TIMEOUT_MS`, because the upstream provider may still be generating after the local connection closes. Rate limits and temporary upstream 5xx errors remain eligible for bounded queue retries. Increase the timeout for a known slow provider instead of repeatedly submitting the same generation.
+The generation worker does not automatically retry an image request that reaches `AI_IMAGE_TIMEOUT_MS`, loses its connection without a definite response, returns an interrupted body, or completes before storage fails: the provider may already have generated and charged for it. Stale running tasks are marked as having an unknown upstream outcome instead of being regenerated. Explicit rate limits and temporary upstream 5xx errors remain eligible for bounded queue retries. Increase the timeout for a known slow provider instead of repeatedly submitting the same generation. Cancelling requests aborts the local provider connection but cannot guarantee upstream cancellation or a refund.
 
 ## Credential encryption and rotation
 
@@ -57,11 +57,17 @@ Back up this key ring separately from PostgreSQL. Losing all copies makes stored
 
 Legacy `AI_CREDENTIAL_ENCRYPTION_KEYS` and `AI_CREDENTIAL_ACTIVE_KEY_ID` remain readable for a migration window, but new deployments should only use the generic names above.
 
-## GPT Image 2
+## GPT Image model capabilities
 
-When the selected image-generation model ID is `gpt-image-2` (or a dated `gpt-image-2-*` snapshot), ImageHub sends the selected canvas dimensions directly to the Images API. The included presets satisfy the provider constraints and cover common square, photography, widescreen and mobile portrait ratios from 1K through 4K. Rendering quality maps directly to `auto`, `low`, `medium` or `high`.
+ImageHub automatically recognizes `gpt-image-2.5-sunburst`, `gpt-image-2.5-flare`, `gpt-image-2`, GPT Image 1/1.5/mini and their dated snapshots, plus `dall-e-3`. Settings expose an explicit compatibility-family override for provider aliases. Unknown IDs use conservative standard sizes and display an unverified-capabilities notice; unsupported sizes are rejected rather than silently substituted. Selecting a family declares a provider contract, not a successful capability probe.
 
-High-resolution output above 2560×1440 is experimental at the provider. Prompt Notebook requests JPEG at 90% quality for GPT Image 2 so 4K results remain practical for the configured image host. Other OpenAI-compatible model IDs retain conservative legacy size mapping.
+GPT Image 2 / 2.5 send canvas dimensions directly to the Images API: 16-pixel multiples, longest edge at most 3840, aspect ratio at most 3:1 and total pixels between 655,360 and 8,294,400. Presets cover square, photography, widescreen and phone ratios from 1K through 4K. Output above 2560×1440 remains experimental at the provider. 2.5 adds `xhigh` and `max` to `auto/low/medium/high`; quality and output canvas size are separate controls.
+
+Generation settings persist model-family, `output_format`, `background` and optional `output_compression` under the model's defaults. JPEG at 90% is the default for recognized GPT models; PNG does not send compression. Transparent backgrounds require PNG or WebP and a supporting model. Image2 keeps conservative opaque-background behavior; 2.5 enables transparency and mask editing. Request prompt plus the appended negative prompt is limited to 32,000 characters. Application cost/safety limits remain four output images and four reference images, even when the provider permits more.
+
+The Images API is used for both generation and multipart edits. No Responses API conversation or streaming state is required. A mask is a PNG with alpha matching the first local reference's displayed dimensions; the server normalizes EXIF orientation before storage and provider submission. AI Model character references cannot currently be mixed with a local edit mask. Stored results include requested settings, actual asset dimensions and allowlisted provider usage fields, but not provider secrets or billing estimates.
+
+Official references: [image generation guide](https://developers.openai.com/api/docs/guides/image-generation), [Sunburst](https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst), [Flare](https://developers.openai.com/api/docs/models/gpt-image-2.5-flare).
 
 ## User-configured endpoints
 

@@ -18,7 +18,8 @@
 - AI Model / AI 模特资产库：保存角色设定、用途、封面、主图和多视角备用图；可与提示词绑定，在角色 Profile 中查看关联作品。
 - AI ImageHub 可从角色卡中选择一位模特及最多四张垫图，生成历史保留角色快照；角色资产接口已为未来 LoRA、FaceID 等身份引擎预留适配层。
 - AI 请求超时可通过部署环境配置；图片超时不会盲目重试，供应商错误与请求 ID 会在脱敏后展示。
-- GPT Image 2 原生尺寸：1:1、4:3、3:4、3:2、2:3、16:9、9:16，支持 1K、2K、最高 4K 与 auto/low/medium/high 质量。
+- 按模型能力切换尺寸、质量和输出选项，原生支持 GPT Image 2 / 2.5 Sunburst、Flare；2.5 提供六档质量、最高 4K、透明 PNG/WebP、继续编辑及涂抹蒙版。
+- 生成历史记录请求参数、实际图片尺寸和供应商返回的 token 用量；大图可下载并保存为笔记，避免网络状态不明时自动重复计费。
 - Manifest V3 Chrome 扩展：选中文字、右键或点击图标即可编辑并保存到自己的服务器。
 - PWA、响应式布局、本地草稿、幂等重试、软删除、备份和自动更新。
 
@@ -38,7 +39,7 @@ cp deploy/.env.production.example .env
 ./scripts/deploy-production.sh
 ```
 
-将 [Nginx 示例](deploy/nginx/prompt-notebook.conf.example)复制到宿主机并替换域名、证书路径。示例已将请求体上限设为 45 MB，以容纳 ImageHub 的四张 10 MB 参考图。确认：
+将 [Nginx 示例](deploy/nginx/prompt-notebook.conf.example)复制到宿主机并替换域名、证书路径。示例将请求体上限设为 45 MB；ImageHub 的参考图与蒙版请求合计限制为 44 MiB，单文件不超过 10 MiB。确认：
 
 ```bash
 node scripts/smoke-production.mjs https://prompts.example.com
@@ -58,6 +59,14 @@ node scripts/smoke-production.mjs https://prompts.example.com
 图床兼容接口接收 `multipart/form-data` 的 `file`、`path` 字段及 `X-Auth-Token` 请求头；JSON 响应可返回 `url`、`publicUrl`、`href`、`location`、`key` 或 `path`。
 
 Prompt Notebook 只保存图床 URL 和元数据。当前通用图床协议没有统一的删除接口，因此永久删除 AI Model 或生成历史不会自动删除图床原文件；请在自己的图床中管理这些文件，数据库备份也应与图床备份配套。
+
+## GPT Image 2.5 和图片编辑
+
+1. 在“设置 → AI 模型”添加供应商实际支持的 `gpt-image-2.5-sunburst`、`gpt-image-2.5-flare` 或其日期快照，启用图片生成能力。自定义别名需按供应商文档显式选择兼容系列，不能仅凭名称猜测功能。
+2. 在 AI ImageHub 选择本次使用的模型。2.5 支持 `auto/low/medium/high/xhigh/max`，质量与 1K/2K/4K 画布独立设置；透明背景须选 PNG 或 WebP。大于 2560×1440 的输出仍属于供应商实验能力，可能更慢且费用更高。
+3. 点击已有生成图的“继续编辑”加入参考图；点击第一张本地参考图的“涂抹修改区域”，涂抹要重绘的区域、确认，再输入修改要求并生成。局部编辑需选择支持蒙版的模型，暂不与 AI Model 角色垫图混用。
+
+生成结果每张最多 32 MiB（图床也需允许相应大小）；上传参考图和蒙版每张最多 10 MiB。较大的生成图继续编辑时会在浏览器尝试转为保留尺寸与透明度的 WebP，无法满足限制则明确提示。模型的“测试连接”只验证连接和模型列表，不会执行付费生图，也不保证第三方代理完整实现所声明的能力。
 
 ## 图片反推怎么用
 
