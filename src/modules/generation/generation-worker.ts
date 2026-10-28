@@ -60,7 +60,7 @@ function safeFailure(error: unknown) {
 }
 
 function storedAsset(asset: typeof aiGenerationAssets.$inferSelect): StoredGenerationAsset {
-  if (asset.storageProvider !== "picbed") throw new Error("Unsupported generation storage provider");
+  if (asset.storageProvider !== "picbed" && asset.storageProvider !== "local") throw new Error("Unsupported generation storage provider");
   return {
     storageProvider: asset.storageProvider,
     objectKey: asset.objectKey,
@@ -135,7 +135,7 @@ export class GenerationWorkerProcessor {
       });
       const references = await this.loadReferences(job.id, job.userId);
       const [mask] = await db.select().from(aiGenerationAssets).where(and(eq(aiGenerationAssets.jobId, job.id), eq(aiGenerationAssets.userId, job.userId), eq(aiGenerationAssets.role, "mask"))).limit(1);
-      const maskImage: AiReferenceImage | undefined = mask ? { data: await this.media.read(storedAsset(mask)), mimeType: "image/png", filename: "mask.png" } : undefined;
+      const maskImage: AiReferenceImage | undefined = mask ? { data: await this.media.read(storedAsset(mask), job.userId), mimeType: "image/png", filename: "mask.png" } : undefined;
       await this.assertNotCancelled(job.id);
       await this.progress(job.id, 20);
 
@@ -264,7 +264,7 @@ export class GenerationWorkerProcessor {
     const images: AiReferenceImage[] = [];
     for (const asset of assets) {
       images.push({
-        data: await this.media.read(storedAsset(asset)),
+        data: await this.media.read(storedAsset(asset), userId),
         filename: `reference-${asset.ordinal}.${asset.mimeType.split("/")[1] ?? "png"}`,
         mimeType: asset.mimeType,
       });

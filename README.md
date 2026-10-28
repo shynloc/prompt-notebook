@@ -1,157 +1,412 @@
 # Prompt Notebook
 
-一个独立、自托管、适配桌面与移动端的提示词作品笔记本。它把 Prompt、标签、来源、生成图片和 AI 工作流放在同一套真实账户与 PostgreSQL 数据中，不依赖 WordPress，也不把正式笔记留在浏览器缓存里。
+![Prompt Notebook：从灵感采集到可复用创作资产的原创概念插图](docs/readme/hero.svg)
 
-## 能做什么
+<div align="center">
 
-- Dashboard 用八张统计卡片和可点击标签列表汇总笔记、分享、词库、收藏、项目、回收站与提示词字数。
-- 注册、登录和跨设备同步，支持邮箱验证、密码重置、账户导入导出与删除。
-- 提示词卡片、图片封面、全文搜索、标签、项目、收藏、归档、回收站、版本历史和变量模板。
-- 日期短链接只读分享、明确的创建反馈，以及可续期和关闭的有效分享管理页。
-- 上传图片、导入图片直链、解析网页 Open Graph/Twitter Card 图片，并复用历史图床图片。
-- 按用户加密保存图床令牌和多套 OpenAI-compatible 模型配置。
-- 设置集中管理 AI 模型与图床连接，桌面侧栏保持简洁，分类页仍可独立深链访问。
-- 一键优化 Prompt：自动识别通用或生图任务，以有限语义模块适配人像、产品、风景、海报、封面、信息图、漫画及混合需求，并在应用前展示结构和事实保留警告。
-- 图片反推 Prompt：上传、粘贴或导入图片直链，自动按画面类型分模块描述；支持额外要求改写、原图观察对照、模块编辑、JSON、保存笔记及转交生图／百科分析。
-- 带持久化队列、直接文件下载、保存防重和可删除生成历史的专业 AI ImageHub。
-- 提示词百科支持 AI 分析完整 Prompt，按类别提炼原文词组，经人工选择、编辑和去重后批量收录。
-- AI Model / AI 模特资产库：保存角色设定、用途、封面、主图和多视角备用图；可与提示词绑定，在角色 Profile 中查看关联作品。
-- AI ImageHub 可从角色卡中选择一位模特及最多四张垫图，生成历史保留角色快照；角色资产接口已为未来 LoRA、FaceID 等身份引擎预留适配层。
-- AI 请求超时可通过部署环境配置；图片超时不会盲目重试，供应商错误与请求 ID 会在脱敏后展示。
-- 按模型能力切换尺寸、质量和输出选项，原生支持 GPT Image 2 / 2.5 Sunburst、Flare；2.5 提供六档质量、最高 4K、透明 PNG/WebP、继续编辑及涂抹蒙版。
-- 生成历史记录请求参数、实际图片尺寸和供应商返回的 token 用量；大图可下载并保存为笔记，避免网络状态不明时自动重复计费。
-- Manifest V3 Chrome 扩展：选中文字、右键或点击图标即可编辑并保存到自己的服务器。
-- PWA、响应式布局、本地草稿、幂等重试、软删除、备份和自动更新。
+**不只收藏 Prompt。把灵感、图像、角色与创作过程，留在你自己的笔记本。**
 
-## 一键式自托管流程
+A self-hosted, visual-first prompt library with your own AI workflow.
 
-需要一台安装了 Git、Docker、Docker Compose 和 Nginx/Caddy 的 Linux 服务器。
+[![Release](https://img.shields.io/github/v/release/shynloc/prompt-notebook?style=for-the-badge&color=FF6338&label=RELEASE)](https://github.com/shynloc/prompt-notebook/releases/latest) [![CI](https://img.shields.io/github/actions/workflow/status/shynloc/prompt-notebook/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/shynloc/prompt-notebook/actions/workflows/ci.yml) [![MIT](https://img.shields.io/github/license/shynloc/prompt-notebook?style=for-the-badge&color=233C49)](LICENSE) [![Self hosted](https://img.shields.io/badge/SELF--HOSTED-YOUR_SERVER-233C49?style=for-the-badge&logo=docker&logoColor=white)](#quick-start)
+
+[![Next.js](https://img.shields.io/badge/Next.js-16-111827?style=flat-square&logo=nextdotjs)](package.json) [![React](https://img.shields.io/badge/React-19-233C49?style=flat-square&logo=react&logoColor=61DAFB)](package.json) [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](tsconfig.json) [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](deploy/compose.production.yml) [![Redis](https://img.shields.io/badge/Redis-7.4-DC382D?style=flat-square&logo=redis&logoColor=white)](deploy/compose.production.yml) [![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](deploy/compose.production.yml) [![Chrome MV3](https://img.shields.io/badge/Chrome-Manifest_V3-4285F4?style=flat-square&logo=googlechrome&logoColor=white)](apps/extension/public/manifest.json) [![PWA](https://img.shields.io/badge/PWA-Installable-5A0FC8?style=flat-square&logo=pwa&logoColor=white)](public/sw.js) [![Credentials](https://img.shields.io/badge/Credentials-AES--256--GCM-233C49?style=flat-square)](docs/configuration.md)
+
+[![Stars](https://img.shields.io/github/stars/shynloc/prompt-notebook?style=flat-square&color=FF6338)](https://github.com/shynloc/prompt-notebook/stargazers) [![Forks](https://img.shields.io/github/forks/shynloc/prompt-notebook?style=flat-square&color=233C49)](https://github.com/shynloc/prompt-notebook/forks) [![Issues](https://img.shields.io/github/issues/shynloc/prompt-notebook?style=flat-square&color=FF6338)](https://github.com/shynloc/prompt-notebook/issues) [![Last commit](https://img.shields.io/github/last-commit/shynloc/prompt-notebook?style=flat-square&color=233C49)](https://github.com/shynloc/prompt-notebook/commits/main)
+
+[快速部署](#quick-start) · [功能全览](#features) · [使用指南](#usage) · [Chrome 扩展](#chrome-extension) · [隐私与边界](#privacy) · [常见问题](#faq)
+
+</div>
+
+> 本页插图均为原创静态矢量示意，使用虚构内容，**不是实际页面截图，不包含用户笔记、照片或账户数据**。
+
+## 你的灵感，你的工作流
+
+Prompt Notebook 是一个独立、自托管、适配桌面与手机的提示词作品笔记本。它把散落在网页、聊天和创作工具里的提示词，整理成可以检索、复用、分享与继续创作的个人资产。
+
+- **先记录，再创作**：文本、图片、标签、项目、来源和版本放在一起，不再只剩一段失去上下文的 Prompt。
+- **把 AI 接进来**：优化提示词、从图片反推描述、分析可复用词组、测试生图，都使用你自己配置的模型连接。
+- **真正独立**：可在自己的电脑或服务器运行；账户与笔记存入自己的 PostgreSQL，不依赖 WordPress、作者账户、作者域名或作者的图床。
+- **桌面到手机**：响应式 Web、可安装 PWA 与 Chrome 采集扩展连接同一套服务端数据；本地草稿不是正式笔记的唯一副本。
+
+<a id="features"></a>
+
+## 功能全览
+
+| 工作区 | 已实现的能力 |
+| --- | --- |
+| 📚 提示词库 | 图片卡片瀑布流、多图预览、完整提示词、负面提示词、来源、复制、编辑和搜索 |
+| 🗂️ 整理与复用 | 标签、项目、收藏、归档、回收站、版本历史、变量模板和批量操作 |
+| 📊 Dashboard | 笔记、有效分享、标签、百科词汇、收藏、项目、回收站、提示词总字数八项统计，以及可点击的标签计数 |
+| ✨ AI 优化 | 自动识别任务类型，按有限语义模块组织内容；支持结果对比、确认应用、取消与撤销 |
+| 🔎 图片反推 | 上传、粘贴或导入图片直链，分模块还原画面；支持额外要求、模块编辑、原图观察与 JSON |
+| 🎨 AI ImageHub | 文生图、参考图生图、单次模型选择、比例与尺寸、质量档位、格式、透明背景及压缩选项 |
+| 🖌️ 继续编辑 | 生成图转为参考图；支持模型下的局部涂抹蒙版、撤销画笔、清除与透明 PNG 蒙版导出 |
+| 🧑‍🎨 AI Model | 角色卡、设定与用途、封面、主图、多视角备用图；选择角色垫图，并关联提示词作品 |
+| 🧩 提示词百科 | 分类词库、自定义词汇、点击插入；AI 提取原文词组，人工审核、去重后收录 |
+| 🔗 只读分享 | 日期短链接、七天有效期、分享日期与到期时间、续期、立即关闭和有效分享管理 |
+| 🖼️ 图片管理 | 上传、图片直链、网页解析与图片库；每个账户可选择站点本地存储或外部图床 |
+| 🧷 Chrome 采集 | 选中文字后右键、点击图标或快捷键，编辑标题、内容、标签和配图，再保存到自己的实例 |
+| 🔐 账户与迁移 | 注册、邮箱验证、登录、密码重置、跨设备访问、账户导入导出、设备授权与撤销 |
+| ⚙️ 自托管运维 | Docker Compose、数据库迁移、独立生图 worker、健康检查、备份脚本与可选自动更新 |
+
+### 不止是一个生图表单
+
+AI ImageHub 使用 PostgreSQL 保存任务、Redis / BullMQ 调度、独立 worker 执行。离开页面后任务仍可继续；历史保留请求参数、实际图片尺寸和供应商提供的用量数据，支持直接下载、保存为笔记、设为封面和删除记录。
+
+选项随模型能力变化，不会静默把不支持的画布替换成更小尺寸。当前适配 GPT Image 2 / 2.5 Sunburst、Flare 及其他已声明兼容系列；2.5 提供六档质量，常用比例覆盖 1:1、4:3、3:4、3:2、2:3、16:9、9:16。4K / 大于 2560×1440 的输出仍受供应商实验能力、费用与限额约束。
+
+网络结果不明确、超时或生成完成后保存失败时，不会盲目自动重新生图。第三方代理的 Model ID、参数与实际能力仍需以其接口为准，**“兼容系列”不是平台能力认证**。
+
+## 独立部署，不绑定作者的基础设施
+
+![浏览器与扩展连接自托管服务，再连接用户模型和图床的原创架构示意](docs/readme/workflow.svg)
+
+| 组件 | 作用 | 由谁提供 |
+| --- | --- | --- |
+| Web + 账户服务 | 界面、API、认证与用户隔离 | 本项目 Docker 镜像 |
+| PostgreSQL 16 | 正式笔记、标签、角色、任务与加密凭据 | Compose 自带，数据卷持久化 |
+| Redis 7.4 + worker | 持久化生图队列与后台执行 | Compose 自带 |
+| 本地入口 / HTTPS + 域名 | 本地仅 loopback；服务器使用 HTTPS | 本地启动脚本 / 部署者的反向代理 |
+| SMTP | 服务器注册验证和密码重置邮件 | 服务器模式需自备；本地模式不强制 |
+| 模型 API | 优化、反推、词库分析与生图 | 登录后由用户在设置页填写 |
+| 图片存储 | 参考图、角色照片和生成作品 | 默认私有持久卷，或用户配置的图床 API |
+
+**基础笔记和本地图片不要求模型 API 或图床。** AI 工作流需要兼容模型；外部图床是可选项。调用与外部存储费用由所选供应商决定，项目不提供共享额度，也不要求本机 GPU。
+
+<a id="quick-start"></a>
+
+## 选择部署方式
+
+> [!WARNING]
+> 安全修补与新能力的验收状态见[最新审查记录](docs/verification/2026-10-28-public-readiness.md)。无论选择哪种部署方式，都应保管配置、数据卷和备份；自托管不等于无漏洞保证。
+
+### 方式 A：在自己的电脑使用
+
+无需租服务器、域名、HTTPS 证书、SMTP 或图床；先安装并启动 **Docker Desktop（Linux 容器）**，再[下载源码 ZIP](https://github.com/shynloc/prompt-notebook/archive/refs/heads/main.zip) 并解压到固定目录，或通过 Git 克隆。
+
+Windows：在项目目录打开 PowerShell，执行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-local.ps1
+```
+
+macOS / Linux：在项目目录执行：
+
+```bash
+bash ./scripts/start-local.sh
+```
+
+首次会构建镜像、生成三份独立随机密钥并迁移数据库。脚本不会打印秘密；重复运行会复用 `.env.local-docker` 与持久卷，不会重置笔记。准备就绪后打开 **`http://127.0.0.1:5488`**，注册并登录即可；新账户可直接上传本地图片，无需图床 Token。
+
+可用 `-Port 5489`（PowerShell）或 `bash ./scripts/start-local.sh --port 5489` 自定义首次端口。已有配置以其保存值为准；不要把 localhost 与 127.0.0.1 混用为不同访问入口。
+
+> [!IMPORTANT]
+> 本地模式只监听本机，**不提供手机 / 局域网跨设备访问**，也不是原生桌面安装包。它仅对严格 HTTP loopback origin 放宽邮件验证，不能用来发布公网免验证站点。首次下载依赖与 AI 调用仍需网络；关闭 Docker 后应用也会停止。
+
+更新源码后重新运行同一脚本。停止容器不应删除数据卷；完整迁移需要 `.env.local-docker`、PostgreSQL 数据和本地图片卷，不是只复制项目文件夹。[完整安装与备份说明](docs/installation.md)。
+
+### 方式 B：部署到自己的服务器
+
+#### 1. 准备环境
+
+推荐在 Linux 服务器部署，准备 Git、Docker Engine、Docker Compose v2、`curl`、OpenSSL，以及自己的域名、HTTPS 证书与 Nginx / Caddy 等反向代理。
+
+**必须准备可正常发信的 SMTP 服务。** 当前生产环境默认强制邮箱验证，需在注册前配置完成。Docker 部署不需要宿主机安装 Node.js；只有本地开发、手动构建扩展或运行 Node 验收脚本时才需要 Node.js 22。
+
+#### 2. 获取代码并配置环境
 
 ```bash
 git clone https://github.com/shynloc/prompt-notebook.git
 cd prompt-notebook
 cp deploy/.env.production.example .env
+chmod 600 .env
+
+# 分别生成三份独立值，不要复用或提交到 Git
+openssl rand -hex 24  # PostgreSQL 密码
+openssl rand -hex 32  # Better Auth Secret
+openssl rand -hex 32  # 32 字节凭据加密密钥
 ```
 
-编辑 `.env`：设置自己的 `APP_URL`，并生成数据库密码、Better Auth Secret 和 32 字节凭据加密密钥。图床 Token 和模型 API Key 不写进 `.env`，而是由每位用户登录后在设置页中配置。
+用编辑器打开 `.env`，至少填好以下项目。**占位符必须替换，不能原样启动**：
+
+```dotenv
+APP_URL=https://prompts.example.com
+APP_PORT=5488
+COMPOSE_PROJECT_NAME=prompt-notebook
+
+POSTGRES_PASSWORD=<第一条命令生成的十六进制密码>
+BETTER_AUTH_SECRET=<第二条命令生成的值>
+BETTER_AUTH_IP_ADDRESS_HEADERS=x-real-ip
+CREDENTIAL_ENCRYPTION_KEYS=primary:<第三条命令生成的64位十六进制值>
+CREDENTIAL_ACTIVE_KEY_ID=primary
+
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=<你的SMTP用户名>
+SMTP_PASSWORD=<你的SMTP密码>
+SMTP_FROM=Prompt Notebook <no-reply@example.com>
+```
+
+数据库密码推荐十六进制，避免特殊字符破坏连接 URI。`SMTP_FROM` 应使用邮件服务允许的发件地址；465 端口启用隐式 TLS，其他配置按服务要求填写。
+
+> [!IMPORTANT]
+> **保管好凭据加密密钥。** 丢失密钥，即使数据库仍在，也无法解密已保存的模型 Key 和图床 Token。模型与图床凭据无需写入 `.env`，由用户登录后在设置页加密保存。
+
+#### 3. 构建并启动
 
 ```bash
 ./scripts/deploy-production.sh
 ```
 
-将 [Nginx 示例](deploy/nginx/prompt-notebook.conf.example)复制到宿主机并替换域名、证书路径。示例将请求体上限设为 45 MB；ImageHub 的参考图与蒙版请求合计限制为 44 MiB，单文件不超过 10 MiB。确认：
+脚本会构建镜像、启动 PostgreSQL 和 Redis、执行迁移、启动 Web 与 worker，并检查内部 `/health/ready`。首次构建需下载依赖；数据卷在容器重建后保留。**不要用 `docker compose down -v` 更新应用。**
+
+生产建议使用仓库外的配置文件：
 
 ```bash
-node scripts/smoke-production.mjs https://prompts.example.com
+ENV_FILE=/opt/prompt-notebook/.env ./scripts/deploy-production.sh
 ```
 
-详细变量、密钥轮换和生产检查见[配置说明](docs/configuration.md)。
+目录、权限及 systemd 安装方式见[独立安装指南](docs/installation.md)。
 
-## 首次使用
+#### 4. 配置 HTTPS 反向代理
 
-1. 打开部署后的站点，注册并登录。
-2. 进入“设置 → 图床”，填写兼容图床上传端点和 Token，保存并测试。
-3. 进入“设置 → AI 模型”，添加模型 API Base URL、API Key、Model ID，并分别指定提示词优化、词库分析、生图和反推模型；词库分析也可以继承提示词优化模型。
-4. 按需进入“AI Model”创建角色卡、上传主图与备用图，并在提示词或 AI ImageHub 中复用。
-5. 新建提示词、进入 AI ImageHub 测试生成，或在提示词百科中分析并收录优秀 Prompt 片段。
-6. 安装 Chrome 扩展并连接自己的服务器。
+参考 [Nginx 模板](deploy/nginx/prompt-notebook.conf.example)，替换域名、证书路径和必要的端口：
 
-图床兼容接口接收 `multipart/form-data` 的 `file`、`path` 字段及 `X-Auth-Token` 请求头；JSON 响应可返回 `url`、`publicUrl`、`href`、`location`、`key` 或 `path`。
+- `APP_URL` 必须与最终访问的 HTTPS origin 一致。
+- 应用默认只绑定 `127.0.0.1:5488`；不要把数据库、Redis 或应用内部端口直接暴露到公网。
+- 反向代理应覆盖 `X-Real-IP`，不能直接相信浏览器传入的同名请求头。
+- Nginx 请求体上限为 `45m`，其他反代也应提供等效限制。
+- Cloudflare **不是必需项**。使用 CDN 时另行配置可信代理与真实客户端 IP。
 
-Prompt Notebook 只保存图床 URL 和元数据。当前通用图床协议没有统一的删除接口，因此永久删除 AI Model 或生成历史不会自动删除图床原文件；请在自己的图床中管理这些文件，数据库备份也应与图床备份配套。
-
-## GPT Image 2.5 和图片编辑
-
-1. 在“设置 → AI 模型”添加供应商实际支持的 `gpt-image-2.5-sunburst`、`gpt-image-2.5-flare` 或其日期快照，启用图片生成能力。自定义别名需按供应商文档显式选择兼容系列，不能仅凭名称猜测功能。
-2. 在 AI ImageHub 选择本次使用的模型。2.5 支持 `auto/low/medium/high/xhigh/max`，质量与 1K/2K/4K 画布独立设置；透明背景须选 PNG 或 WebP。大于 2560×1440 的输出仍属于供应商实验能力，可能更慢且费用更高。
-3. 点击已有生成图的“继续编辑”加入参考图；点击第一张本地参考图的“涂抹修改区域”，涂抹要重绘的区域、确认，再输入修改要求并生成。局部编辑需选择支持蒙版的模型，暂不与 AI Model 角色垫图混用。
-
-生成结果每张最多 32 MiB（图床也需允许相应大小）；上传参考图和蒙版每张最多 10 MiB。较大的生成图继续编辑时会在浏览器尝试转为保留尺寸与透明度的 WebP，无法满足限制则明确提示。模型的“测试连接”只验证连接和模型列表，不会执行付费生图，也不保证第三方代理完整实现所声明的能力。
-
-## 图片反推怎么用
-
-1. 在 AI ImageHub 点击“图片反推”，或打开“提示词百科 → 图片反推”。已有参考图和生成结果也有“反推”入口。
-2. 选择、拖入、粘贴图片，或填写 HTTPS 图片直链。填入额外要求，例如“衬衫改成蓝色，保留人物、姿势和构图”。
-3. 点击“AI 一键反推”。使用“设置 → AI 模型”指定的图片理解模型，不自动调用生图模型。
-4. 核对修改摘要与推测内容；在“分模块编辑”查看原图观察并编辑结果，或查看／复制 JSON。
-5. 可填入 AI ImageHub（覆盖前确认，支持撤销）、保存为笔记，或送到百科分析再人工选择收录词汇。
-
-反推是对可见画面的重建建议，不能还原原作者的真实 Prompt，也不能保证生图完全复现。原图只有勾选保存封面时才转存到用户配置的图床；跨页面交接的文本保存在当前标签页内，十分钟内一次性使用，不放进分享或导航 URL。
-
-## Chrome 扩展
-
-[下载最新版 Chrome 扩展 ZIP](https://github.com/shynloc/prompt-notebook/releases/latest/download/prompt-notebook-chrome.zip)
-
-安装方法：
-
-1. 下载 ZIP 并解压到固定文件夹。
-2. 在 Chrome 打开 `chrome://extensions`，开启“开发者模式”。
-3. 点击“加载已解压的扩展程序”，选择解压后的文件夹。
-4. 打开扩展，输入自己的 Prompt Notebook HTTPS 地址，点击“验证服务器”。
-5. 点击“连接 Prompt Notebook”，在网站完成授权。
-6. 在任意网页选中文字，点击扩展图标、右键“保存到提示词笔记本中”，或按 `Alt + Shift + P`。
-
-扩展没有写死服务器地址，不申请长期读取所有网站，只在用户主动操作时通过 `activeTab` 读取当前页，并为用户填写的服务器单独申请可撤销权限。
-
-本地构建扩展：
+#### 5. 验收与首次登录
 
 ```bash
+curl --fail https://prompts.example.com/health/live
+curl --fail https://prompts.example.com/health/ready
+```
+
+换成自己的域名，确认接口成功后：**打开网站 → 注册 → 收到验证邮件 → 完成验证 → 登录**。健康检查只代表核心服务就绪，不代表 SMTP、图床或模型连接已经过功能验证。
+
+<a id="usage"></a>
+
+## 第一次使用：从采集到作品
+
+### 01 / 建立提示词库
+
+新建 Prompt，填写标题、提示词和可选的负面提示词、来源、标签、项目或 AI Model 关联。保存后，其他设备登录同一实例与账户即可访问。图片卡片可打开大图与完整内容；搜索、标签、项目、收藏帮助定位，版本历史与变量模板便于复用，误删后先去回收站。
+
+### 02 / 选择图片存储
+
+进入 **设置 → 图片存储**，选择并保存：
+
+| 方式 | 适用场景 | 注意事项 |
+| --- | --- | --- |
+| 站点本地存储 | 不想另配图床，图片保存在运行本应用的电脑 / 服务器 | 私有读取、独立持久卷、默认每账户 1 GiB 配额；需备份媒体卷并监控磁盘 |
+| 外部图床 | 已有兼容图床，希望将图片存储独立出去 | 配置端点与 Token；已有图片的公开性由图床决定 |
+
+新账户默认使用本地存储；已有图床账户保留原设置。切换只影响后续上传，**不自动搬迁旧图、不删除已保存的图床令牌**；以前的本地和图床图片都可继续使用。设置页会显示本地用量与配额，可测试当前存储是否可读写。
+
+本地图片不会直接放进公开目录。读取需要对应账户登录；分享只为有效链接提供指定封面，关闭或过期后该分享访问会失效。为避免破坏其他笔记、角色或历史引用，单条记录删除暂不自动删除底层本地对象，配额按实际保留文件计；账户永久删除会清理自己的目录，清理失败需管理员处理。
+
+管理员可通过 `LOCAL_MEDIA_QUOTA_BYTES` 调整每用户配额，`LOCAL_MEDIA_MIN_FREE_BYTES` 保留磁盘余量（默认 256 MiB）。用户不能在网页中指定任意服务器目录。选择外部图床时，再填写端点与 Token：
+
+当前内置 **Picbed-compatible** 协议，不是任意存储服务的一键直连：
+
+```text
+POST <你的公网 HTTPS 上传端点>
+X-Auth-Token: <你的 Token>
+Content-Type: multipart/form-data
+
+file = 图片文件
+path = 对象路径
+```
+
+JSON 响应可包含 `url`、`publicUrl`、`href`、`location`、`key` 或 `path` 等受支持字段。图片须提供稳定、公开的 HTTPS URL；临时签名链接、查询参数鉴权、localhost 和私网目标不适用于当前安全策略。S3 / R2 等需要兼容适配层，不能直接填入任意控制台 API。
+
+普通上传和参考图每张最多 10 MiB，生成结果每张最多 32 MiB，图床自身也需允许对应大小。[图片协议与归属说明](docs/storage-providers.md)。
+
+### 03 / 配置多套 AI 模型
+
+进入 **设置 → AI 模型**，填写 Base URL、API Key、Model ID，选择能力并保存。不同用途可以指定不同模型：
+
+| 用途 | 需要的模型能力 |
+| --- | --- |
+| 提示词优化 | 文本生成与指令遵循 |
+| 百科词组分析 | 按约定结构输出文本，也可继承优化模型 |
+| 图片反推 | 视觉理解 / 图片输入 |
+| 图片生成 | 与配置兼容的 Images 生成及编辑接口 |
+
+模型采用 OpenAI-compatible API，**不是所有厂商原生 API 都可直接接入**。端点必须为受支持的公网 HTTPS / 443 地址，当前不支持直接连接 localhost Ollama 或私网网关。连接测试只检查连接和模型列表，不执行付费生图，也不保证代理实现了全部参数。
+
+供应商别名需按其文档设置兼容系列。参数、轮换与超时见[配置说明](docs/configuration.md)。
+
+### 04 / 优化、反推，再测试生成
+
+- **优化**：在编辑器点击 AI 优化，检查结果对比与结构提示，确认后才覆盖原文；取消会保留输入。
+- **反推**：在 AI ImageHub 或提示词百科打开图片反推，上传、粘贴或导入图片，补充“衬衫改蓝色”等要求，检查模块、原图观察和修改摘要，再复制、保存或转交生图。
+- **生图**：选择本次模型、画布、质量、格式和参考图，提交后在任务墙查看进度；完成后下载、保存为笔记、设为封面或继续编辑。
+- **局部编辑**：支持蒙版的模型下，点击第一张本地参考图的“涂抹修改区域”，绘制、确认，再描述修改要求；暂不与 AI Model 角色垫图混用。
+
+参考图与角色垫图合计最多四张，每次最多四张输出；参考图与蒙版单文件最多 10 MiB，整个 multipart 请求最多 44 MiB。图片反推是画面重建建议，不能还原原作者真正的 Prompt，也不保证完全复现。
+
+### 05 / 沉淀为长期资产
+
+- **AI Model**：创建角色，记录用途、设定、主图及备用图；选择角色生成，并将笔记绑定到角色 Profile。
+- **提示词百科 → 提示词分析**：AI 分类提取优秀 Prompt 中的可复用描述，人工选择、编辑、去重后收录；编辑笔记时点击插入。
+- **七天只读分享**：在预览中创建链接，在分享管理查看开始与到期时间、续期或立即关闭。
+- **Dashboard**：查看笔记与词库规模，点击标签计数进入对应作品集合。
+
+<a id="chrome-extension"></a>
+
+## Chrome 扩展：看到好 Prompt，就地收藏
+
+**[下载最新版扩展 ZIP](https://github.com/shynloc/prompt-notebook/releases/latest/download/prompt-notebook-chrome.zip)** · [全部版本](https://github.com/shynloc/prompt-notebook/releases) · [扩展源码](apps/extension)
+
+1. 下载 ZIP，解压到固定文件夹。
+2. 在 Chrome 打开 `chrome://extensions`，开启“开发者模式”。
+3. 点击“加载已解压的扩展程序”，选择包含 `manifest.json` 的解压目录，不要选择 ZIP。
+4. 打开扩展，输入**自己的 Prompt Notebook HTTPS 地址**，点击验证服务器。
+5. 点击连接，在自己的站点登录并批准设备授权。
+6. 网页选中文字后，点击图标、右键“保存到提示词笔记本中”，或使用 `Alt + Shift + P`。
+7. 核对标题、内容、标签与配图后保存，网站中即可看到笔记。
+
+扩展使用 Manifest V3、用户主动触发的 `activeTab` 和按实例申请的可撤销权限，不内置作者服务器地址，不要求作者账户或商店安装。网页配图识别取决于站点结构，不能保证抓取所有社交网站的私有或防盗链图片。升级时替换本地目录，在扩展管理页重新加载。
+
+开发者可自行构建：
+
+```bash
+npm ci
 npm run extension:test
 npm run extension:zip
 ```
 
-## 技术栈
+<a id="privacy"></a>
 
-| 层 | 实现 |
-|---|---|
-| Web | Next.js 16、React 19、TypeScript |
-| 认证 | Better Auth、服务端 Cookie 会话、扩展 PKCE 设备授权 |
-| 数据 | PostgreSQL 16、Drizzle ORM、GIN trigram 搜索索引 |
-| 队列 | Redis、BullMQ、独立 generation worker |
-| 图片 | 用户级加密 Picbed-compatible 配置；数据库保存 URL 与元数据 |
-| 部署 | Docker Compose、Nginx/Caddy、systemd 可选自动更新 |
-| 测试 | Vitest、Testing Library、Playwright、数据库集成测试 |
+## 隐私、安全与能力边界
 
-设计细节见[系统架构](docs/architecture.md)、[产品设计](docs/product-design.md)和 [ADR](docs/adr/README.md)。
+| 数据 | 存放位置与边界 |
+| --- | --- |
+| 笔记、账户、标签、角色、任务 | 你的 PostgreSQL，登录后的数据操作按账户隔离 |
+| 模型 Key、图床 Token | 服务端 AES-256-GCM 加密保存，接口不返回完整凭据 |
+| 图片文件 | 私有本地媒体卷或用户配置的图床；数据库保存 URL 与元数据，不含图片原文件 |
+| AI 请求内容 | 按用户操作发往所选供应商，受其数据处理与计费规则约束 |
+| 只读分享 | 持有有效链接的人可访问指定内容，私密内容不应创建公开分享 |
+| 本页插图 | 仓库内原创 SVG、虚构示意，无实际页面截图或用户数据 |
 
-## 本地开发
+“自托管”**不是端到端加密，也不是所有功能离线运行**。实例管理员、运行环境、所选模型与图床均属于信任边界。本地图片按账户私有读取；外部图床协议的公开 URL 不等于私密对象存储。
+
+出站请求采用公网地址校验、DNS 固定、私网地址拒绝、响应大小与重定向限制。不要为了接入内网网关或临时签名 URL 而关闭这些保护。真实配置、秘密和数据不应进入公开 Git 或 Docker 构建上下文。
+
+本轮覆盖范围、残留 Git 隐私元数据与运维待办见[公开发布与独立部署审查](docs/verification/2026-10-28-public-readiness.md)。安全问题见 [SECURITY.md](SECURITY.md)，不要在公开 Issue 中粘贴密钥或私人笔记。
+
+## 更新、备份与迁移
+
+- **更新**：拉取经过审阅的提交或版本，再运行部署脚本；不要删除数据卷。
+- **自动更新可选**：systemd 默认每五分钟检查公开 `main`；先备份再构建、迁移，未就绪则尝试回退应用版本，**不自动回滚数据库结构**。Fork 后检查更新远端与分支。
+- **完整备份**：数据库转储 + 凭据加密密钥 + 本地媒体卷 / 外部图床原文件，缺一不可；配置与备份建议放在仓库之外，并保留异机副本。
+- **恢复演练**：备份脚本先检查 SQL 导出，再压缩并生成 SHA-256，避免管道掩盖失败；文件校验仍不等于完整恢复演练，见[备份与恢复](docs/backup-and-restore.md)。
+- **图片删除**：通用图床协议无统一删除接口，永久删除角色、笔记或生成历史不会自动清除图床原文件。
+- **账户迁移**：导出不携带可直接复用的模型 / 图床秘密，迁移后需重新配置；图片地址也应持续可用。
+
+## 本地开发与验证
+
+需要 Node.js 22、npm 与 Docker Compose。开发邮件链接输出到服务端控制台，不等同于生产 SMTP。
 
 ```bash
 npm ci
 docker compose -f docker-compose.dev.yml up -d postgres redis
 cp .env.example .env.local
-npm run db:migrate
+
+# db:migrate 是 CLI，需显式提供 DATABASE_URL
+DATABASE_URL=postgres://prompt_notebook:prompt_notebook@127.0.0.1:55432/prompt_notebook_test npm run db:migrate
 npm run dev
 ```
 
-开发环境的验证与密码重置链接会输出到服务端终端。完整验证：
+测试 PostgreSQL / Redis 端口分别为 55432 / 56379。本地生图 worker 在另一终端运行：
 
 ```bash
+npm run build:worker
+node --env-file=.env.local dist/generation-worker.mjs
+```
+
+常用检查：
+
+```bash
+npm run docs:check
 npm run lint
 npm run typecheck
 npm test -- --run
 npm run extension:test
 npm run build
 npm run extension:build
+npm run release:check
 npm run test:e2e
+npm audit --omit=dev
 ```
 
-## 更新、备份与回滚
+数据库集成测试需提供测试 `DATABASE_URL`；构建与浏览器测试也要加载必要环境。更多约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。[Vitest](vitest.config.ts)、[Playwright](playwright.config.ts) 和 [CI 工作流](.github/workflows/ci.yml) 是可执行依据，徽章不代表没有任何缺陷。
 
-`scripts/auto-update.sh` 只跟踪公开仓库 `main`：发现新提交后先备份 PostgreSQL，再构建不可变提交镜像、执行迁移和健康检查；应用未就绪时自动恢复上一应用版本。安装 `deploy/systemd/prompt-notebook-update.*` 后每五分钟检查一次。数据库每日校验备份由 `prompt-notebook-backup.timer` 执行。
+<a id="faq"></a>
 
-自动更新不会覆盖 tracked 本地改动；自定义配置应放在仓库外的 `/opt/prompt-notebook/.env`、反向代理和备份目录中。数据库迁移只向前执行，因此重大升级仍应保留异机备份并阅读 Release Notes。
+## 常见问题
 
-## 安全
+<details>
+<summary><strong>没有 WordPress、Cloudflare 或作者账号，能用吗？</strong></summary>
 
-- 模型 Key 与图床 Token 使用 AES-256-GCM 按用户、用途绑定加密，API 只返回掩码。
-- 自定义出站端点只允许标准端口的公网 HTTPS，并进行 DNS 固定、私网地址拒绝、响应限额和禁止跳转。
-- 网页图片和角色参考图在每次请求及每次跳转时重新校验公网地址并固定已验证 IP，阻止 DNS 重绑定绕过内网限制。
-- 账户、笔记、标签、图片引用、模型、图床和扩展设备均按所有者隔离。
-- 不要提交 `.env`、数据库备份、服务器地址、SSH Key 或真实用户数据。
+可以。账户、数据库和队列随项目部署，两者都不是依赖。本地模式无需域名或 SMTP；公网服务器模式需要自己的域名 / HTTPS 与 SMTP。外部图床可选，AI 使用自己的模型；扩展连接你的实例，不连接作者站点。
 
-安全报告方式见 [SECURITY.md](SECURITY.md)。
+</details>
 
-## 许可证
+<details>
+<summary><strong>为什么 ready 正常，注册却收不到邮件？</strong></summary>
 
-[MIT](LICENSE)。欢迎阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 后提交 Issue 或 Pull Request。
+ready 不验证邮件投递。检查 SMTP 主机、端口、发件人、用户名、密码、垃圾箱和发送限制。当前生产环境强制邮箱验证，不能靠留空 SMTP 获得完整登录流程。
+
+</details>
+
+<details>
+<summary><strong>不配置 AI 和图床，可以只用文本笔记吗？</strong></summary>
+
+可以。文本笔记、搜索、标签、项目和收藏不要求模型或图床；站点本地存储也可直接上传图片。只有 AI 功能要求模型连接；服务器登录仍需满足生产认证条件。
+
+</details>
+
+<details>
+<summary><strong>支持任意模型、S3 / R2、Ollama 或内网 API 吗？</strong></summary>
+
+不能这样承诺。当前使用 OpenAI-compatible 与 Picbed-compatible 协议，并拒绝私网 / localhost 出站目标。其他原生协议、签名 URL 或私网网关需要适配方案，不应直接关闭 SSRF 保护。
+
+</details>
+
+<details>
+<summary><strong>清理缓存或换设备，笔记会丢吗？</strong></summary>
+
+成功保存的笔记在服务端 PostgreSQL，不依赖单台设备缓存。未保存草稿与扩展本地连接状态不在此保证内；服务器、图床仍需备份，删除数据卷也会丢失服务端数据。
+
+</details>
+
+<details>
+<summary><strong>为什么 package.json 有 private: true，还能 MIT 开源吗？</strong></summary>
+
+它用于防止误发布到 npm，不会把 GitHub 仓库变为私有，也不限制依照 MIT 许可证自行部署、修改和分发。
+
+</details>
+
+## 文档与参与
+
+| 想了解什么 | 从这里开始 |
+| --- | --- |
+| 安装、目录与 systemd | [Installation](docs/installation.md) |
+| SMTP、IP、密钥、模型与限制 | [Configuration](docs/configuration.md) |
+| 图片协议与归属 | [Storage providers](docs/storage-providers.md) |
+| 备份与恢复演练 | [Backup and restore](docs/backup-and-restore.md) |
+| 性能与容量准备 | [Performance](docs/performance.md) |
+| 技术架构与决策 | [Architecture](docs/architecture.md) · [ADR](docs/adr/README.md) |
+| 公开发布与独立部署审查 | [Public readiness audit](docs/verification/2026-10-28-public-readiness.md) |
+| 版本变更 | [Changelog](CHANGELOG.md) · [Releases](https://github.com/shynloc/prompt-notebook/releases) |
+| 贡献与安全报告 | [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) |
+
+欢迎提交可复现的 Issue 和有测试覆盖的改进。报告问题前，请删除截图和日志中的账户、笔记、模型 Key 与图床 Token。
+
+**[MIT License](LICENSE)** · Built for ideas worth keeping.

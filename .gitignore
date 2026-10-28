@@ -15,5 +15,35 @@ apps/extension/.wxt/
 apps/extension/prompt-notebook-chrome-*.zip
 apps/extension/prompt-notebook-chrome.zip
 *.tsbuildinfo
+# Environment files may contain deployment credentials. Keep only safe templates.
 .env
-.env.local
+.env.*
+!/.env.example
+!/deploy/.env.production.example
+!/deploy/.env.local.example
+
+# Keep database backups and dumps out of source control. Migrations are source.
+backups/
+dumps/
+/.data/
+/data/
+*.sql
+*.sql.gz
+*.sql.bz2
+*.sql.xz
+*.dump
+*.dump.gz
+*.backup
+*.sqlite
+*.sqlite3
+!/src/db/migrations/*.sql
+
+# SSH/TLS private material must never become an accidental repository asset.
+.ssh/
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ecdsa
+id_ed25519

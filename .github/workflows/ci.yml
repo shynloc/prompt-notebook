@@ -28,6 +28,7 @@ jobs:
       DATABASE_URL: postgres://prompt_notebook:prompt_notebook@127.0.0.1:5432/prompt_notebook_test
       CREDENTIAL_ENCRYPTION_KEYS: ci:0000000000000000000000000000000000000000000000000000000000000000
       CREDENTIAL_ACTIVE_KEY_ID: ci
+      LOCAL_MEDIA_ROOT: ${{ github.workspace }}/outputs/ci-media
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -35,6 +36,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run docs:check
       - run: npm run db:migrate
       - run: npx playwright install --with-deps chromium
       - run: npm run lint

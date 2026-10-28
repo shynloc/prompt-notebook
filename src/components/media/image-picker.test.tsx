@@ -28,6 +28,38 @@ describe("ImagePicker link import", () => {
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith([importedImage]));
     expect(outerSubmit).not.toHaveBeenCalled();
-    expect(screen.getByText("已从链接解析图片并导入图床")).toBeVisible();
+    expect(screen.getByText("已从链接解析图片并保存到当前图片存储")).toBeVisible();
+  });
+
+  it("accepts a real local-provider image and gives storage-specific upload feedback", async () => {
+    const local = { ...importedImage, storageProvider: "local", objectKey: "local/object-id", displayUrl: "http://localhost:3000/api/v1/media/files/object-id", thumbnailUrl: "http://localhost:3000/api/v1/media/files/object-id" };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ data: local }, { status: 201 }));
+    const onChange = vi.fn();
+    render(<ImagePicker images={[]} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText("上传预览图片"), { target: { files: [new File(["png"], "image.png", { type: "image/png" })] } });
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith([local]));
+    expect(screen.getByRole("status")).toHaveTextContent("已上传到站点本地存储");
+  });
+
+  it("shows a quota error without adding an image or allowing duplicate uploads", async () => {
+    let finish: (response: Response) => void = () => undefined;
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise<Response>((resolve) => { finish = resolve; }));
+    const onChange = vi.fn();
+    render(<ImagePicker images={[]} onChange={onChange} />);
+    const input = screen.getByLabelText("上传预览图片");
+    const event = { target: { files: [new File(["png"], "image.png", { type: "image/png" })] } };
+    fireEvent.change(input, event); fireEvent.change(input, event);
+    expect(fetcher).toHaveBeenCalledOnce();
+    finish(Response.json({ error: { message: "本地图片存储配额不足，请删除不需要的图片或切换外部图床。" } }, { status: 413 }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("存储配额不足");
+    expect(onChange).not.toHaveBeenCalled();
+    expect(input).not.toBeDisabled();
+  });
+
+  it("reports an image-library failure instead of silently showing an empty library", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+    render(<ImagePicker images={[]} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "图片库" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("图片库暂时无法加载");
   });
 });

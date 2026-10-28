@@ -44,6 +44,7 @@ services:
     restart: unless-stopped
     environment:
       APP_URL: ${APP_URL:?APP_URL is required}
+      APP_DEPLOYMENT_MODE: ${APP_DEPLOYMENT_MODE:-server}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
       DATABASE_URL: postgres://prompt_notebook:${POSTGRES_PASSWORD}@postgres:5432/prompt_notebook
       REDIS_URL: redis://redis:6379/0
@@ -57,6 +58,10 @@ services:
       AI_CONNECTION_TIMEOUT_MS: ${AI_CONNECTION_TIMEOUT_MS:-10000}
       AI_TEXT_TIMEOUT_MS: ${AI_TEXT_TIMEOUT_MS:-60000}
       AI_REVERSE_PROMPT_TIMEOUT_MS: ${AI_REVERSE_PROMPT_TIMEOUT_MS:-120000}
+      LOCAL_MEDIA_ROOT: /app/data/media
+      LOCAL_MEDIA_QUOTA_BYTES: ${LOCAL_MEDIA_QUOTA_BYTES:-1073741824}
+      LOCAL_MEDIA_MIN_FREE_BYTES: ${LOCAL_MEDIA_MIN_FREE_BYTES:-268435456}
+    volumes: [local_media_data:/app/data/media]
     ports:
       - "127.0.0.1:5488:3000"
     healthcheck:
@@ -77,12 +82,18 @@ services:
     restart: unless-stopped
     command: ["node", "dist/generation-worker.mjs"]
     environment:
+      APP_URL: ${APP_URL:?APP_URL is required}
+      APP_DEPLOYMENT_MODE: ${APP_DEPLOYMENT_MODE:-server}
       DATABASE_URL: postgres://prompt_notebook:${POSTGRES_PASSWORD}@postgres:5432/prompt_notebook
       REDIS_URL: redis://redis:6379/0
       CREDENTIAL_ENCRYPTION_KEYS: ${CREDENTIAL_ENCRYPTION_KEYS:?CREDENTIAL_ENCRYPTION_KEYS is required}
       CREDENTIAL_ACTIVE_KEY_ID: ${CREDENTIAL_ACTIVE_KEY_ID:?CREDENTIAL_ACTIVE_KEY_ID is required}
       AI_IMAGE_TIMEOUT_MS: ${AI_IMAGE_TIMEOUT_MS:-600000}
       GENERATION_WORKER_CONCURRENCY: 1
+      LOCAL_MEDIA_ROOT: /app/data/media
+      LOCAL_MEDIA_QUOTA_BYTES: ${LOCAL_MEDIA_QUOTA_BYTES:-1073741824}
+      LOCAL_MEDIA_MIN_FREE_BYTES: ${LOCAL_MEDIA_MIN_FREE_BYTES:-268435456}
+    volumes: [local_media_data:/app/data/media]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -96,3 +107,4 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  local_media_data:

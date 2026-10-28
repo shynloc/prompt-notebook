@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm";
 
 import { db } from "@/db/client";
+import { localImageView, validateOwnedLocalImages } from "@/modules/media/local-media-store";
 import {
   aiGenerationJobs,
   characterProfileImages,
@@ -100,7 +101,7 @@ export class CharacterRepository {
     const notesByProfile = new Map(noteCounts.map((item) => [item.profileId, item.value]));
     const generationsByProfile = new Map(generationCounts.map((item) => [item.profileId, item.value]));
     return rows.map((row) => {
-      const profileImages = images.filter((image) => image.profileId === row.id);
+      const profileImages = images.filter((image) => image.profileId === row.id).map((image) => localImageView(userId, image));
       return {
         ...row,
         images: profileImages,
@@ -183,6 +184,7 @@ export class CharacterRepository {
   }
 
   private async createWithId(userId: string, id: string | undefined, input: CreateCharacterProfileInput) {
+    await validateOwnedLocalImages(userId, input.images);
     const { images, ...profile } = input;
     const created = await db.transaction(async (tx) => {
       const [row] = await tx.insert(characterProfiles).values({ ...profile, ...(id ? { id } : {}), userId }).returning();
@@ -230,6 +232,7 @@ export class CharacterRepository {
   }
 
   async update(userId: string, id: string, input: UpdateCharacterProfileInput) {
+    if (input.images) await validateOwnedLocalImages(userId, input.images);
     const updated = await db.transaction(async (tx) => {
       const [current] = await tx.select().from(characterProfiles).where(and(
         eq(characterProfiles.userId, userId),

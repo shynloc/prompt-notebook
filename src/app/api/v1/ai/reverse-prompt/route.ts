@@ -7,8 +7,9 @@ import { inspectImage, MAX_IMAGE_BYTES } from "@/modules/media/image-policy";
 import { ReversePromptService } from "@/modules/ai/reverse-prompt-service";
 import { secureOutboundFetch } from "@/modules/ai/secure-outbound-fetch";
 import { reverseOptionsSchema, type ReversePromptOptions } from "@/modules/ai/reverse-prompt-structure";
+import { localMediaIdFromUrl, readLocalMediaUrl } from "@/modules/media/local-media-store";
 
-const inputSchema = reverseOptionsSchema.extend({ imageUrl: z.url().max(4_000).refine((value) => new URL(value).protocol === "https:", "请使用 HTTPS 图片链接") }).strict();
+const inputSchema = reverseOptionsSchema.extend({ imageUrl: z.url().max(4_000).refine((value) => new URL(value).protocol === "https:" || localMediaIdFromUrl(value) !== null, "请使用 HTTPS 图片链接或本站私有图片") }).strict();
 interface ReverseService {
   reverse(userId: string, image: Buffer, mimeType: "image/jpeg" | "image/png" | "image/webp", signal?: AbortSignal, options?: ReversePromptOptions): Promise<unknown>;
 }
@@ -67,7 +68,7 @@ async function downloadImage(imageUrl: string, signal: AbortSignal) {
   return readBounded(response.body, MAX_IMAGE_BYTES, signal);
 }
 
-async function sourceImage(request: Request) {
+async function sourceImage(request: Request, userId: string) {
   const type = request.headers.get("content-type") ?? "";
   let image: Buffer;
   let options: ReversePromptOptions;
@@ -94,7 +95,7 @@ async function sourceImage(request: Request) {
     const raw = await readBounded(request.body, 16_000, request.signal);
     const { imageUrl, ...input } = inputSchema.parse(JSON.parse(raw.toString("utf8")));
     options = input;
-    image = await downloadImage(imageUrl, request.signal);
+    image = (await readLocalMediaUrl(userId, imageUrl))?.data ?? await downloadImage(imageUrl, request.signal);
   }
   try {
     const metadata = await inspectImage(image);
@@ -110,7 +111,7 @@ export function createReversePromptHandler(service: ReverseService = defaultServ
   return async function POST(request: Request) {
     try {
       const session = await requireSession(request);
-      const source = await sourceImage(request);
+      const source = await sourceImage(request, session.user.id);
       return dataResponse(await service.reverse(session.user.id, source.image, source.mimeType, request.signal, source.options));
     } catch (error) {
       return errorResponse(error);

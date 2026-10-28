@@ -1,0 +1,98 @@
+name: prompt-notebook-local
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: prompt_notebook
+      POSTGRES_USER: prompt_notebook
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/start-local first}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U prompt_notebook -d prompt_notebook"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [notebook]
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: [redis-server, --appendonly, "yes", --appendfsync, everysec, --maxmemory-policy, noeviction]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [notebook]
+
+  migrate:
+    image: prompt-notebook-local:local
+    command: [node, scripts/migrate.mjs]
+    environment:
+      DATABASE_URL: postgres://prompt_notebook:${POSTGRES_PASSWORD:?Run scripts/start-local first}@postgres:5432/prompt_notebook
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [notebook]
+
+  web:
+    image: prompt-notebook-local:local
+    build:
+      context: ..
+      args:
+        BUILD_APP_URL: http://127.0.0.1:${APP_PORT:-5488}
+    restart: unless-stopped
+    environment:
+      APP_URL: http://127.0.0.1:${APP_PORT:-5488}
+      APP_DEPLOYMENT_MODE: local
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Run scripts/start-local first}
+      DATABASE_URL: postgres://prompt_notebook:${POSTGRES_PASSWORD:?Run scripts/start-local first}@postgres:5432/prompt_notebook
+      REDIS_URL: redis://redis:6379/0
+      CREDENTIAL_ENCRYPTION_KEYS: ${CREDENTIAL_ENCRYPTION_KEYS:?Run scripts/start-local first}
+      CREDENTIAL_ACTIVE_KEY_ID: local
+      LOCAL_MEDIA_ROOT: /app/data/media
+      LOCAL_MEDIA_QUOTA_BYTES: ${LOCAL_MEDIA_QUOTA_BYTES:-1073741824}
+      LOCAL_MEDIA_MIN_FREE_BYTES: ${LOCAL_MEDIA_MIN_FREE_BYTES:-268435456}
+    volumes: [local_media_data:/app/data/media]
+    ports: ["127.0.0.1:${APP_PORT:-5488}:3000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://127.0.0.1:3000/health/ready >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    networks: [notebook]
+
+  generation-worker:
+    image: prompt-notebook-local:local
+    command: [node, dist/generation-worker.mjs]
+    restart: unless-stopped
+    environment:
+      APP_URL: http://127.0.0.1:${APP_PORT:-5488}
+      APP_DEPLOYMENT_MODE: local
+      DATABASE_URL: postgres://prompt_notebook:${POSTGRES_PASSWORD:?Run scripts/start-local first}@postgres:5432/prompt_notebook
+      REDIS_URL: redis://redis:6379/0
+      CREDENTIAL_ENCRYPTION_KEYS: ${CREDENTIAL_ENCRYPTION_KEYS:?Run scripts/start-local first}
+      CREDENTIAL_ACTIVE_KEY_ID: local
+      LOCAL_MEDIA_ROOT: /app/data/media
+      LOCAL_MEDIA_QUOTA_BYTES: ${LOCAL_MEDIA_QUOTA_BYTES:-1073741824}
+      LOCAL_MEDIA_MIN_FREE_BYTES: ${LOCAL_MEDIA_MIN_FREE_BYTES:-268435456}
+      AI_IMAGE_TIMEOUT_MS: ${AI_IMAGE_TIMEOUT_MS:-600000}
+      GENERATION_WORKER_CONCURRENCY: 1
+    volumes: [local_media_data:/app/data/media]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    networks: [notebook]
+
+networks:
+  notebook:
+
+volumes:
+  postgres_data:
+  redis_data:
+  local_media_data:

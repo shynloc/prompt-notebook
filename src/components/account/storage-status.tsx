@@ -58,7 +58,7 @@ export function StorageStatus() {
       <div>
         <span className="section-kicker">STORAGE & RECOVERY</span>
         <h3 id="storage-status-title">存储与恢复状态</h3>
-        <p>图片文件由图床保存；这里统计数据库中的笔记、标签和图片引用。服务器备份状态来自真实备份任务。</p>
+        <p>图片文件保存在站点本地存储或外部图床；这里统计数据库中的笔记、标签和图片引用。请将本地图片数据卷与数据库一起备份。</p>
       </div>
       {status ? (
         <dl className="status-grid">

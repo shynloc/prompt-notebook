@@ -4,7 +4,9 @@ import { betterAuth } from "better-auth";
 import { db } from "@/db/client";
 import { account, session, user, verification } from "@/db/schema";
 import { parseIpAddressHeaders } from "@/lib/auth/client-ip";
+import { isLocalDeployment } from "@/lib/deployment/config";
 import { createMailer, type Mailer } from "@/lib/email/mailer";
+import { LocalMediaStore } from "@/modules/media/local-media-store";
 
 interface CreatePromptAuthOptions {
   mailer?: Mailer;
@@ -17,6 +19,7 @@ const authSchema = { user, session, account, verification };
 
 export function createPromptAuth(options: CreatePromptAuthOptions = {}) {
   const isProduction = process.env.NODE_ENV === "production";
+  const localDeployment = isLocalDeployment();
   const appUrl = process.env.APP_URL ?? (isProduction ? "" : "http://localhost:3000");
   const secret =
     process.env.BETTER_AUTH_SECRET ??
@@ -29,7 +32,7 @@ export function createPromptAuth(options: CreatePromptAuthOptions = {}) {
 
   const mailer = options.mailer ?? createMailer();
   const requireEmailVerification =
-    options.requireEmailVerification ?? isProduction;
+    options.requireEmailVerification ?? (isProduction && !localDeployment);
   const ipAddressHeaders =
     options.ipAddressHeaders
     ?? parseIpAddressHeaders(process.env.BETTER_AUTH_IP_ADDRESS_HEADERS);
@@ -68,7 +71,13 @@ export function createPromptAuth(options: CreatePromptAuthOptions = {}) {
       },
     },
     user: {
-      deleteUser: { enabled: true },
+      deleteUser: {
+        enabled: true,
+        async afterDelete(deletedUser) {
+          try { await new LocalMediaStore(deletedUser.id).purgeDeletedAccount(); }
+          catch { console.warn("Local media cleanup pending after account deletion"); }
+        },
+      },
     },
     advanced: {
       useSecureCookies: new URL(appUrl).protocol === "https:",

@@ -15,6 +15,7 @@ import {
 } from "drizzle-orm";
 
 import { db } from "@/db/client";
+import { localImageView, validateOwnedLocalImages } from "@/modules/media/local-media-store";
 import {
   characterProfileImages,
   characterProfiles,
@@ -130,6 +131,8 @@ export class NoteRepository {
         role: noteCharacterProfiles.role,
         sortOrder: noteCharacterProfiles.sortOrder,
         avatarId: characterProfileImages.id,
+        avatarProvider: characterProfileImages.storageProvider,
+        avatarObjectKey: characterProfileImages.objectKey,
         avatarThumbnailUrl: characterProfileImages.thumbnailUrl,
         avatarDisplayUrl: characterProfileImages.displayUrl,
         avatarFocusX: characterProfileImages.focusX,
@@ -149,7 +152,7 @@ export class NoteRepository {
         .orderBy(noteCharacterProfiles.sortOrder),
     ]);
     return rows.map((row) => {
-      const images = imageRows.filter((image) => image.noteId === row.id);
+      const images = imageRows.filter((image) => image.noteId === row.id).map((image) => localImageView(row.userId, image));
       return {
         ...row,
         tags: tagRows
@@ -157,7 +160,12 @@ export class NoteRepository {
           .map(({ id, name }) => ({ id, name })),
         images,
         coverImage: images.find((image) => image.isCover) ?? images[0] ?? null,
-        characterProfiles: characterRows.filter((character) => character.noteId === row.id).map((character) => ({
+        characterProfiles: characterRows.filter((character) => character.noteId === row.id).map((character) => {
+          const avatar = character.avatarId ? localImageView(row.userId, {
+            storageProvider: character.avatarProvider!, objectKey: character.avatarObjectKey!,
+            thumbnailUrl: character.avatarThumbnailUrl!, displayUrl: character.avatarDisplayUrl!,
+          }) : null;
+          return {
           id: character.id,
           name: character.name,
           summary: character.summary,
@@ -165,14 +173,15 @@ export class NoteRepository {
           deletedAt: character.deletedAt,
           role: character.role as PromptCharacter["role"],
           sortOrder: character.sortOrder,
-          avatar: character.avatarId ? {
+          avatar: character.avatarId && avatar ? {
             id: character.avatarId,
-            thumbnailUrl: character.avatarThumbnailUrl!,
-            displayUrl: character.avatarDisplayUrl!,
+            displayUrl: avatar.displayUrl,
+            thumbnailUrl: avatar.thumbnailUrl,
             focusX: character.avatarFocusX!,
             focusY: character.avatarFocusY!,
           } : null,
-        })),
+          };
+        }),
       };
     });
   }
@@ -257,6 +266,7 @@ export class NoteRepository {
   }
 
   async create(userId: string, input: CreateNoteInput) {
+    await validateOwnedLocalImages(userId, input.images);
     const { tags: tagNames, images, characterProfiles: characters, ...note } = input;
     const created = await db.transaction(async (tx) => {
       const [row] = await tx.insert(promptNotes).values({ ...note, userId, contentHash: promptContentHash(note.prompt, note.negativePrompt) }).returning();
@@ -352,6 +362,7 @@ export class NoteRepository {
   }
 
   async update(userId: string, id: string, input: UpdateNoteInput) {
+    if (input.images) await validateOwnedLocalImages(userId, input.images);
     const updated = await db.transaction(async (tx) => {
       const [current] = await tx
         .select()

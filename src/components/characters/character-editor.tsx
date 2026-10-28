@@ -137,7 +137,7 @@ export function CharacterEditor({ initial }: { initial?: CharacterProfile }) {
           <CharacterImageManager images={images} onChange={(next) => { setImages(next); setDirty(true); }} />
 
           {message ? <p className="character-form-message" role={message.includes("已保存") ? "status" : "alert"}>{message}</p> : null}
-          <footer className="character-editor-actions"><button className="primary-action" disabled={saving} type="submit">{saving ? "正在保存…" : initial ? "保存角色卡" : "创建 AI Model"}</button><Link href={initial ? `/ai-models/${initial.id}` : "/ai-models"}>取消</Link><span>图片保存在你配置的图床，应用服务器只记录引用。</span></footer>
+          <footer className="character-editor-actions"><button className="primary-action" disabled={saving} type="submit">{saving ? "正在保存…" : initial ? "保存角色卡" : "创建 AI Model"}</button><Link href={initial ? `/ai-models/${initial.id}` : "/ai-models"}>取消</Link><span>图片使用设置中所选的站点本地存储或外部图床。</span></footer>
         </form>
 
         <aside className="character-live-card" aria-label="角色卡实时预览">

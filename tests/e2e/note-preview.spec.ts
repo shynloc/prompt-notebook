@@ -55,7 +55,7 @@ test("imports a web page image without submitting or leaving the editor", async 
   await page.getByRole("tab", { name: "粘贴链接" }).click();
   await page.getByLabel("图片或网页链接").fill("https://x.com/CyberTotal2026/status/2078771325108117885/photo/1");
   await page.getByRole("button", { name: "解析并导入" }).click();
-  await expect(page.getByText("已从链接解析图片并导入图床")).toBeVisible();
+  await expect(page.getByText("已从链接解析图片并保存到当前图片存储")).toBeVisible();
   await expect(page).toHaveURL("/notes/new");
   expect(noteCreates).toBe(0);
 });

@@ -3,9 +3,11 @@
 状态：已确认
 日期：2026-07-19
 
+更新说明（2026-10-28）：本文保留初期设计目标，性能、容量、备份频次等目标不等于已完成的运行验收。v1.9 的本地 Docker 模式、私有图片卷、双存储选择及认证边界以 [ADR-0020](adr/0020-local-deployment-and-private-instance-media.md) 和[发布验证记录](verification/2026-10-28-local-storage-release.md)为准。
+
 ## 1. 架构摘要
 
-系统采用模块化单体：Next.js 应用提供响应式 Web UI、同源 API 和认证入口；PostgreSQL 保存账户、笔记及加密配置；Redis/BullMQ 与独立 worker 执行持久化生图任务；图片通过可替换存储适配器写入用户配置的 Picbed-compatible 图床。
+系统采用模块化单体：Next.js 应用提供响应式 Web UI、同源 API 和认证入口；PostgreSQL 保存账户、笔记及加密配置；Redis/BullMQ 与独立 worker 执行持久化生图任务；图片通过可替换适配器写入站点私有持久卷，或用户配置的 Picbed-compatible 图床。
 
 生产环境由任意 HTTPS 反向代理将用户域名转发到仅监听回环地址的应用容器。WordPress 不参与认证、数据或部署。
 
@@ -246,7 +248,7 @@ sequenceDiagram
 - PostgreSQL 每小时逻辑或增量备份，至少每日一份异机/对象存储副本。
 - 保留 7 个每日、4 个每周、3 个每月备份，具体期限上线前确认。
 - 每月进行恢复演练并记录恢复时间。
-- 数据库备份保存图片对象键；图床使用版本、生命周期或独立备份策略。
+- 数据库备份保存图片对象键；站点本地媒体卷和外部图床文件均须独立备份。
 - 发布前执行迁移备份；迁移需向前兼容并提供恢复说明。
 
 ## 15. 可观测性
@@ -261,7 +263,8 @@ sequenceDiagram
 ```text
 HTTPS proxy -> 127.0.0.1:<app-port> -> prompt-app -> prompt-postgres
                                              |----> prompt-redis -> generation-worker
-                                             `----> user-configured image host
+                                             |----> private shared media volume
+                                             `----> optional user-configured image host
 ```
 
 - Release 工作流构建版本镜像；自托管更新器也可按固定 commit SHA 在服务器构建。

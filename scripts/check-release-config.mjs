@@ -8,6 +8,10 @@ const requiredFiles = [
   "scripts/restore-postgres.sh",
   "apps/extension/public/manifest.json",
   "docs/license-decision.md",
+  "deploy/compose.local.yml",
+  "deploy/.env.local.example",
+  "scripts/start-local.ps1",
+  "scripts/start-local.sh",
 ];
 const failures = requiredFiles.filter((file) => !existsSync(file)).map((file) => `missing ${file}`);
 const manifest = JSON.parse(readFileSync("apps/extension/public/manifest.json", "utf8"));
@@ -20,6 +24,14 @@ for (const name of ["AI_CONNECTION_TIMEOUT_MS", "AI_TEXT_TIMEOUT_MS", "AI_REVERS
   if (!productionCompose.includes(`${name}:`)) failures.push(`production compose must expose ${name}`);
 }
 if (!productionCompose.includes("BETTER_AUTH_IP_ADDRESS_HEADERS:")) failures.push("production compose must expose BETTER_AUTH_IP_ADDRESS_HEADERS");
+for (const name of ["APP_DEPLOYMENT_MODE", "LOCAL_MEDIA_ROOT", "LOCAL_MEDIA_QUOTA_BYTES", "LOCAL_MEDIA_MIN_FREE_BYTES"]) {
+  if (!productionCompose.includes(`${name}:`)) failures.push(`production compose must expose ${name}`);
+}
+for (const file of ["deploy/compose.production.yml", "deploy/compose.local.yml", "deploy/compose.preview.yml"]) {
+  const content = readFileSync(file, "utf8");
+  if ((content.match(/^\s+LOCAL_MEDIA_MIN_FREE_BYTES:/gm) ?? []).length !== 2) failures.push(`${file} must expose the local-media disk reserve to web and worker`);
+}
+if ((productionCompose.match(/local_media_data:\/app\/data\/media/g) ?? []).length !== 2) failures.push("web and generation worker must share persistent private media storage");
 
 const production = process.argv.includes("--production");
 if (production) {

@@ -4,6 +4,8 @@
 
 Accepted
 
+The external-object-storage-only constraint is superseded by [ADR-0020](0020-local-deployment-and-private-instance-media.md). Instance-managed storage is now an explicit owner-isolated provider with a persistent volume, not an implicit fallback.
+
 ## Context
 
 Generated images and reference images can consume large amounts of disk and database space. ACKS Image Web currently permits a local-disk fallback and stores reference data URLs in generation rows.

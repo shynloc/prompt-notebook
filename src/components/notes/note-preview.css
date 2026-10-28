@@ -85,6 +85,8 @@
 .tag-input button span { margin-left: .35rem; }
 .tag-input input { border: 0; flex: 1; min-width: 10rem; outline: 0; padding: .35rem; width: auto; }
 .form-message, .upload-message { color: var(--color-danger); margin: 0; }
+.upload-message[role="status"] { color: var(--color-ink-muted); }
+.upload-message--error { border-left: 3px solid var(--color-danger); padding-left: .65rem; }
 .gallery-toolbar { align-items: center; display: flex; flex-wrap: wrap; gap: .75rem; }
 .gallery-toolbar label { align-items: center; display: flex; font-family: var(--font-mono); font-size: .7rem; font-weight: 800; gap: .45rem; }
 .gallery-toolbar select { background: var(--color-paper); border: 1px solid var(--color-border); color: var(--color-ink); min-height: 2.5rem; padding: .45rem .65rem; }

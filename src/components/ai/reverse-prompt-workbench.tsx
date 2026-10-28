@@ -170,10 +170,16 @@ export function ReversePromptWorkbench({
     const activeSource = source;
     if (!(activeSource instanceof File)) {
       try {
-        if (new URL(activeSource.imageUrl).protocol !== "https:")
+        const imageUrl = new URL(activeSource.imageUrl);
+        // Local-mode media is intentionally served over the current loopback
+        // origin; do not extend this exception to arbitrary HTTP endpoints.
+        const ownPrivateImage = imageUrl.origin === window.location.origin
+          && !imageUrl.username && !imageUrl.password && !imageUrl.search && !imageUrl.hash
+          && /^\/api\/v1\/media\/files\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(imageUrl.pathname);
+        if (imageUrl.protocol !== "https:" && !ownPrivateImage)
           throw new Error();
       } catch {
-        setError("请粘贴有效的 HTTPS 图片直链。");
+        setError("请粘贴有效的 HTTPS 图片直链，或选择本站图片库中的私有图片。");
         return;
       }
     }
@@ -318,7 +324,7 @@ export function ReversePromptWorkbench({
             throw new Error(
               apiError(
                 payload,
-                "原图保存失败；请配置图床，或取消保存封面后重试。",
+                "原图保存失败；请检查图片存储空间与配置，或取消保存封面后重试。",
               ).message,
             );
           image = payload.data as NoteImage;
@@ -785,7 +791,7 @@ export function ReversePromptWorkbench({
                 disabled={saving || Boolean(savedId)}
                 onChange={(event) => setIncludeImage(event.target.checked)}
               />
-              同时保存原图作为封面（使用已配置图床）
+              同时保存原图作为封面（使用当前图片存储）
             </label>
             <button
               disabled={!usable || Boolean(savedId)}

@@ -17,11 +17,16 @@ function endpointSchema() {
   });
 }
 
-export const upsertMediaStorageSchema = z.object({
+const picbedStorageSchema = z.object({
   providerType: z.literal("picbed").default("picbed"),
   endpoint: endpointSchema(),
   token: z.string().min(1).max(10_000).optional(),
   enabled: z.boolean().default(true),
 });
+
+export const upsertMediaStorageSchema = z.union([
+  z.object({ providerType: z.literal("local") }).strict(),
+  picbedStorageSchema,
+]);
 
 export type UpsertMediaStorageInput = z.infer<typeof upsertMediaStorageSchema>;
