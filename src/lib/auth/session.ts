@@ -9,6 +9,19 @@ export async function requireSession(request: Request) {
   if (!session) {
     throw new ApiError(401, "UNAUTHENTICATED", "Authentication is required");
   }
+  if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
+    const origin = request.headers.get("origin");
+    if (origin !== null) {
+      let trustedOrigin = "";
+      try {
+        const configured = new URL(process.env.APP_URL ?? "http://localhost:3000");
+        if (["http:", "https:"].includes(configured.protocol)) trustedOrigin = configured.origin;
+      } catch { /* Invalid configuration fails closed. */ }
+      if (!trustedOrigin || origin !== trustedOrigin) {
+        throw new ApiError(403, "ORIGIN_NOT_ALLOWED", "This request origin is not permitted");
+      }
+    }
+  }
   return session;
 }
 

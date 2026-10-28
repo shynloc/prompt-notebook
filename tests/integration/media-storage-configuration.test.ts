@@ -61,7 +61,7 @@ describe("media storage configuration API", () => {
     expect(stored.secretAuthTag).toBeTruthy();
 
     const otherResponse = await GET(request(`${base}/api/v1/settings/storage`, { cookie: other.cookie }));
-    expect((await otherResponse.json()).data).toBeNull();
+    expect((await otherResponse.json()).data).toMatchObject({ providerType: "local", picbedConfigured: false, local: { usedBytes: 0 } });
 
     const updatedResponse = await PUT(request(`${base}/api/v1/settings/storage`, {
       cookie: owner.cookie,

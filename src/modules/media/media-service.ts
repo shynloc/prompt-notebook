@@ -4,6 +4,7 @@ import { inspectImage, MAX_IMAGE_BYTES } from "./image-policy";
 import { MediaStorageConfigurationService } from "./media-storage-configuration-service";
 import type { StorageProvider } from "./storage-provider";
 import { resolveWebImage } from "./web-image-resolver";
+import { readLocalMediaUrl } from "./local-media-store";
 
 function extension(mimeType: string) {
   return mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
@@ -31,6 +32,7 @@ export class MediaService {
   }
 
   async importUrl(userId: string, url: string) {
-    return this.upload(userId, await resolveWebImage(url));
+    const local = await readLocalMediaUrl(userId, url);
+    return this.upload(userId, local?.data ?? await resolveWebImage(url));
   }
 }

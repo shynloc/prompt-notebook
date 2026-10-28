@@ -1,8 +1,8 @@
 export interface GenerationAsset {
   id: string;
   jobId: string;
-  role: "reference" | "result";
-  storageProvider: "picbed";
+  role: "reference" | "result" | "mask";
+  storageProvider: "local" | "picbed";
   objectKey: string;
   displayUrl: string;
   thumbnailUrl: string;

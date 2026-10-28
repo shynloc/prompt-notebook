@@ -43,7 +43,7 @@ test("consolidates service settings behind one sidebar destination", async ({ pa
   await page.getByRole("link", { name: /设置/ }).click();
   await expect(page).toHaveURL(/\/settings\/ai$/);
   await expect(page.getByRole("navigation", { name: "设置分类" })).toBeVisible();
-  await page.getByRole("link", { name: "图床", exact: true }).click();
+  await page.getByRole("link", { name: "图片存储", exact: true }).click();
   await expect(page).toHaveURL(/\/settings\/storage$/);
-  await expect(page.getByRole("heading", { name: "图床", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "图片存储", exact: true })).toBeVisible();
 });

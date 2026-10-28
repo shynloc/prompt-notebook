@@ -1,13 +1,33 @@
 # Installation
 
-Prompt Notebook is an independent application. You do not need WordPress, the author's server or domain, Cloudflare, or an author-issued account. Use your own server, HTTPS domain and service credentials.
+Prompt Notebook is an independent application. You do not need WordPress, the author's infrastructure or an author-issued account. Choose a private local installation on your computer, or a server installation with your own HTTPS domain.
 
-## Requirements
+## Local deployment
+
+Install and start Docker Desktop on Windows/macOS, or Docker Engine with Compose v2 on Linux. Download/extract the repository or clone it with Git, then run from its root:
+
+```powershell
+# Windows PowerShell: do not change your machine-wide execution policy.
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-local.ps1
+```
+
+```sh
+# macOS / Linux
+sh ./scripts/start-local.sh
+```
+
+Open `http://127.0.0.1:5488` and register. No server, domain, reverse proxy, SMTP, external image host or host Node.js installation is needed. Local image storage is the default for new users; model API credentials are still required for AI features. The first run builds the application and may take several minutes. The scripts create three independently random credentials in private `.env.local-docker`, never print them, and reuse the existing file on later runs.
+
+The local Compose stack publishes only `127.0.0.1:5488`; PostgreSQL and Redis have no host ports. Its separately named database, Redis and image volumes persist across container restarts. Keep those volumes and `.env.local-docker` together; **do not run `docker compose down -v` or prune volumes**. Rerun the same script to start/update the local application. Use `-Port 5490` (PowerShell) or `--port 5490` (shell) only when creating a fresh local configuration; existing configurations retain their port and keys.
+
+Local mode is explicit `APP_DEPLOYMENT_MODE=local` and accepts only strict HTTP loopback origins (`localhost`, `127.0.0.1` or `[::1]`). It disables mandatory signup email verification and prints password-reset links to the local container log. Treat that log as private. Do not expose this mode to a LAN or public reverse proxy; use server mode instead. Local mode does not disable SSRF checks for model APIs or external image services.
+
+## Server requirements
 
 - Linux host with Git, Docker Engine, Docker Compose v2, `curl` and OpenSSL.
 - A DNS name pointing to the host and an HTTPS reverse proxy such as Nginx or Caddy.
-- **Working SMTP before production signup.** Production requires email verification; without a delivery-capable mail configuration, users cannot complete signup and login. There is no documented environment switch to disable this requirement.
-- For image upload, AI Model photos and generated-image storage: a public HTTPS image service implementing the [Picbed-compatible protocol](storage-providers.md), configured by each user after login.
+- **Working SMTP before server-mode signup.** Server mode requires email verification; without a delivery-capable mail configuration, users cannot complete signup and login. The loopback-only local mode above is not a public-server workaround.
+- Images can use the persistent instance-local storage (default for new users) or an optional public HTTPS [Picbed-compatible service](storage-providers.md), selected by each user after login.
 - For AI features: a compatible model API and credentials, configured after login. Text-only notes do not require AI or image-storage configuration.
 
 The Docker build provides Node.js and application dependencies. You do **not** need Node.js or npm on the production host. Local development and building the Chrome extension from source use Node.js 22 and npm instead. Leave enough free memory and disk for an image build, PostgreSQL data and backups; no measured minimum hardware specification is claimed.
@@ -87,7 +107,7 @@ Replace `prompts.example.com` with your actual host. No Node.js smoke-test comma
 
 1. Open your HTTPS origin, register a new account, receive the verification email and follow its link. Confirm that login still works after a page refresh. If mail does not arrive, resolve SMTP authentication, sender policy and spam filtering before continuing.
 2. Save a text-only note. Open a second device and confirm the same note appears after login; formal notes live in PostgreSQL, not only browser storage.
-3. Open **Settings → Image storage**, enter your own compatible upload endpoint and token, save and test. This test uploads a small image; the service must return a stable publicly accessible image URL.
+3. Open **Settings → Image storage** and test the default instance-local storage, or select an external compatible upload endpoint and token. A local test writes/deletes a small probe; an external test uploads a small image to that service.
 4. Open **Settings → AI models**, add your own OpenAI-compatible API Base URL, key and model ID, then assign model purposes. Connection testing reads the model list; it does not run a paid generation or prove every advertised model capability.
 5. Create a note with a photo or submit a small image-generation task to verify the complete media workflow. Real model requests may be billed by your provider.
 6. Download the [Chrome extension ZIP](https://github.com/shynloc/prompt-notebook/releases/latest/download/prompt-notebook-chrome.zip), unpack it, enable developer mode at `chrome://extensions`, and load the unpacked folder. In the extension, enter your own HTTPS origin, verify it and authorize the connection. See the [README extension guide](../README.md#chrome-extension).
@@ -96,7 +116,7 @@ Model and image-host APIs must be publicly reachable HTTPS endpoints on port 443
 
 ## Backups and optional automatic updates
 
-Read [backup limitations and restore drills](backup-and-restore.md) before relying on a backup. The current shell backup pipeline has a known producer-failure detection limitation; gzip/SHA validation is not a successful-dump or restore guarantee. Keep an independently verified, off-host database backup, the image-host files and a separate credential-key backup.
+Read [backup checks and restore drills](backup-and-restore.md) before relying on a backup. The script checks `pg_dump` success separately before compressing and publishing; gzip/SHA checks still do not prove a complete logical restore. Keep an independently verified off-host database backup, the instance-local image volume or external image-host files, and a separate credential-key backup.
 
 Review all paths and service users before installing the units. With the example `/opt/prompt-notebook` layout:
 

@@ -10,12 +10,17 @@ if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
 else
   PROJECT_NAME=""
 fi
-PROJECT_NAME="${PROJECT_NAME:-prompt-notebook}"
+PROJECT_NAME="${COMPOSE_PROJECT_NAME:-${PROJECT_NAME:-prompt-notebook}}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 umask 077
 mkdir -p "$BACKUP_DIR"
 TARGET="$BACKUP_DIR/prompt-notebook-$STAMP.sql.gz"
-PART="$TARGET.part"
+TEMP_DIR="$(mktemp -d "$BACKUP_DIR/.prompt-notebook-$STAMP.XXXXXX")"
+RAW="$TEMP_DIR/dump.sql"
+PART="$TEMP_DIR/dump.sql.gz"
+CHECKSUM="$TEMP_DIR/checksum"
+PUBLISHED=0
+CHECKSUM_PUBLISHED=0
 
 compose() {
   if [ -n "$ENV_FILE" ]; then docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
@@ -31,15 +36,31 @@ record_event() {
 }
 
 failed() {
-  rm -f "$PART"
+  STATUS_CODE=$?
+  trap - INT TERM HUP EXIT
+  rm -f "$RAW" "$PART" "$CHECKSUM"
+  rmdir "$TEMP_DIR" 2>/dev/null || true
+  if [ "$PUBLISHED" = 1 ] && [ "$CHECKSUM_PUBLISHED" = 0 ]; then rm -f "$TARGET"; fi
   record_event failed "backup command failed"
+  exit "$STATUS_CODE"
 }
-trap failed INT TERM HUP EXIT
+trap failed EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
 
-compose exec -T postgres pg_dump -U prompt_notebook -d prompt_notebook --no-owner --no-acl | gzip -9 > "$PART"
+# Check pg_dump itself, not only the final command in a shell pipeline.
+compose exec -T postgres pg_dump -U prompt_notebook -d prompt_notebook --no-owner --no-acl > "$RAW"
+test -s "$RAW"
+gzip -9 -c "$RAW" > "$PART"
 gzip -t "$PART"
-mv "$PART" "$TARGET"
-sha256sum "$TARGET" > "$TARGET.sha256"
+# Hard-link publication is atomic and cannot replace a previous successful dump.
+ln "$PART" "$TARGET"
+PUBLISHED=1
+(cd "$BACKUP_DIR" && sha256sum "$(basename "$TARGET")") > "$CHECKSUM"
+ln "$CHECKSUM" "$TARGET.sha256"
+CHECKSUM_PUBLISHED=1
+rm -f "$RAW" "$PART" "$CHECKSUM"
+rmdir "$TEMP_DIR"
 find "$BACKUP_DIR" -type f -name 'prompt-notebook-*.sql.gz*' -mtime "+$RETENTION_DAYS" -delete
 record_event success "$TARGET"
 trap - INT TERM HUP EXIT

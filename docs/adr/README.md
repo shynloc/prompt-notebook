@@ -23,3 +23,4 @@ ADR 记录已确认的重大技术选择。若以后改变决定，应新增 ADR
 | [0017](0017-ai-assisted-term-curation.md) | 人工确认的 AI 词库分析与收录 | Accepted |
 | [0018](0018-ai-model-character-assets.md) | 独立 AI 模特角色资产与生成参考图快照 | Accepted |
 | [0019](0019-adaptive-prompt-ir.md) | 自适应 Prompt IR 与有限语义模块 | Accepted |
+| [0020](0020-local-deployment-and-private-instance-media.md) | 本地部署与账户隔离的站点图片存储 | Accepted |

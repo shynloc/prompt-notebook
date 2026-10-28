@@ -10,10 +10,13 @@ work
 **/.env.*
 !.env.example
 !deploy/.env.production.example
+!deploy/.env.local.example
 
 # Exclude private data from build contexts and intermediate image layers too.
 **/backups
 **/dumps
+.data
+data
 **/*.sql
 **/*.sql.gz
 **/*.sql.bz2

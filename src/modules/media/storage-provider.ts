@@ -1,5 +1,5 @@
 export interface StoredImage {
-  storageProvider: "picbed";
+  storageProvider: "picbed" | "local";
   objectKey: string;
   displayUrl: string;
   thumbnailUrl: string;

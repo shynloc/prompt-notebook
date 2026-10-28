@@ -131,7 +131,7 @@ function exportNote(note: PromptNoteView): NotebookExportV2["notes"][number] {
       sortOrder: profile.sortOrder,
     })),
     images: note.images.map((image) => ({
-      storageProvider: image.storageProvider as "picbed" | "external",
+      storageProvider: image.storageProvider as "picbed" | "external" | "local",
       objectKey: image.objectKey,
       displayUrl: image.displayUrl,
       thumbnailUrl: image.thumbnailUrl,
@@ -161,7 +161,7 @@ function exportCharacter(
     deletedAt: profile.deletedAt,
     images: profile.images.map((image) => ({
       id: image.id,
-      storageProvider: image.storageProvider as "picbed" | "external",
+      storageProvider: image.storageProvider as "picbed" | "external" | "local",
       objectKey: image.objectKey,
       displayUrl: image.displayUrl,
       thumbnailUrl: image.thumbnailUrl,

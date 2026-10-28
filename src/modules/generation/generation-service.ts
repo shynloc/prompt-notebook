@@ -18,6 +18,7 @@ import { ApiError } from "@/lib/api/errors";
 import { validateImageGenerationSettings } from "@/modules/ai/image-capabilities";
 import { AiProviderError } from "@/modules/ai/types";
 import { inspectImage } from "@/modules/media/image-policy";
+import { localImageView } from "@/modules/media/local-media-store";
 import { REFERENCE_IMAGE_IDENTITY_STRATEGY } from "@/modules/characters/identity-strategy";
 
 import {
@@ -42,7 +43,7 @@ type CharacterReference = {
   profileName: string;
   profileVersion: number;
   viewType: string;
-  storageProvider: "picbed" | "external";
+  storageProvider: "picbed" | "external" | "local";
   objectKey: string;
   displayUrl: string;
   thumbnailUrl: string;
@@ -229,7 +230,7 @@ export class GenerationService {
         width: reference.width,
         height: reference.height,
         sizeBytes: reference.sizeBytes,
-      })));
+      }, userId)));
     } catch {
       if (!await this.heartbeatPreparation(userId, id)) {
         throw new ApiError(409, "GENERATION_PREPARATION_CANCELLED", "The generation task stopped while references were being prepared");
@@ -335,7 +336,7 @@ export class GenerationService {
       .orderBy(asc(aiGenerationAssets.role), asc(aiGenerationAssets.ordinal));
     const references = await this.characterReferences(userId, [id]);
     const availableProfiles = await this.availableCharacterProfiles(userId, references);
-    return { ...job, assets, characterProfile: this.characterProfileForJob(references, id, availableProfiles) };
+    return { ...job, assets: assets.map((asset) => localImageView(userId, asset)), characterProfile: this.characterProfileForJob(references, id, availableProfiles) };
   }
 
   async list(userId: string, options: { limit: number; status: "all" | "active" | "succeeded" | "failed" | "cancelled" }) {
@@ -354,7 +355,7 @@ export class GenerationService {
       inArray(aiGenerationAssets.jobId, jobs.map((job) => job.id)),
     )).orderBy(asc(aiGenerationAssets.role), asc(aiGenerationAssets.ordinal));
     const byJob = new Map<string, typeof assets>();
-    for (const asset of assets) byJob.set(asset.jobId, [...(byJob.get(asset.jobId) ?? []), asset]);
+    for (const asset of assets) byJob.set(asset.jobId, [...(byJob.get(asset.jobId) ?? []), localImageView(userId, asset)]);
     const references = await this.characterReferences(userId, jobs.map((job) => job.id));
     const availableProfiles = await this.availableCharacterProfiles(userId, references);
     return jobs.map((job) => ({
@@ -405,7 +406,7 @@ export class GenerationService {
     )).limit(1);
     if (!asset) throw new ApiError(404, "GENERATION_ASSET_NOT_FOUND", "生成图片不存在或已被删除");
     const stored: StoredGenerationAsset = {
-      storageProvider: "picbed",
+      storageProvider: asset.storageProvider === "local" ? "local" : "picbed",
       objectKey: asset.objectKey,
       displayUrl: asset.displayUrl,
       thumbnailUrl: asset.thumbnailUrl,
@@ -416,7 +417,7 @@ export class GenerationService {
     };
     const extension = asset.mimeType === "image/jpeg" ? "jpg" : asset.mimeType === "image/webp" ? "webp" : "png";
     return {
-      data: await this.media.read(stored),
+      data: await this.media.read(stored, userId),
       mimeType: asset.mimeType,
       filename: `prompt-notebook-${jobId.slice(0, 8)}-${asset.ordinal + 1}.${extension}`,
     };

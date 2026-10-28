@@ -1,6 +1,6 @@
 export interface NoteImage {
   id?: string;
-  storageProvider: "picbed" | "external";
+  storageProvider: "local" | "picbed" | "external";
   objectKey: string;
   displayUrl: string;
   thumbnailUrl: string;

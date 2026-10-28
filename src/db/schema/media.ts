@@ -1,10 +1,14 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  bigint,
   check,
+  index,
+  integer,
   pgTable,
   text,
   timestamp,
+  uuid,
 } from "drizzle-orm/pg-core";
 
 import { user } from "./auth";
@@ -40,3 +44,26 @@ export const mediaStorageSettings = pgTable(
     ),
   ],
 );
+
+// Keep the legacy encrypted Picbed row intact when users select local storage.
+export const mediaStoragePreferences = pgTable("media_storage_preferences", {
+  userId: text("user_id").primaryKey().references(() => user.id, { onDelete: "cascade" }),
+  providerType: text("provider_type").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [check("media_storage_preferences_provider_check", sql`${table.providerType} in ('local', 'picbed')`)]);
+
+export const localMediaObjects = pgTable("local_media_objects", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  objectKey: text("object_key").notNull().unique(),
+  mimeType: text("mime_type").notNull(),
+  sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+  width: integer("width").notNull(),
+  height: integer("height").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("local_media_objects_owner_created_idx").on(table.userId, table.createdAt),
+  check("local_media_objects_mime_check", sql`${table.mimeType} in ('image/jpeg', 'image/png', 'image/webp')`),
+  check("local_media_objects_size_check", sql`${table.sizeBytes} > 0 and ${table.sizeBytes} <= 33554432`),
+  check("local_media_objects_dimensions_check", sql`${table.width} > 0 and ${table.height} > 0`),
+]);

@@ -4,6 +4,27 @@ All notable changes use the Keep a Changelog structure. Versions follow Semantic
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-28
+
+### Added
+
+- Added Docker Desktop/local Docker deployment with Windows PowerShell and macOS/Linux launchers, one-time private random configuration and persistent data/media volumes.
+- Added explicit loopback-only local mode without mandatory SMTP while retaining verified-email requirements for public servers.
+- Added selectable account-owned instance storage or external image hosting, private local media reads, quota reporting, disk-space safeguards and token-scoped share covers.
+- Added stable local-object references across domain changes and local assets throughout notes, AI Models, generation, reverse prompts, gallery and downloads.
+
+### Fixed
+
+- Made storage configuration/preference changes atomic and retained existing image-host secrets and old assets across provider switches.
+- Made backup dump/compressor failures explicit and published backups without overwriting earlier successful files.
+- Made local configuration publication atomic, preserved secrets across restarts and kept retained local files isolated during account deletion.
+
+### Security
+
+- Updated Next.js/lint to 16.4.3, Better Auth/adapters to 1.7.14, Nodemailer to 10.2.1 and Zod to 4.6.7; the production dependency audit passes at release verification time.
+- Bounded media request bodies, rejected unsafe filesystem paths/symlinks and unauthorized object references, and enforced same-origin cookie API writes.
+- Unified trusted-proxy IP handling for share pages/images and retained expiring, revocable authorization for private share covers.
+
 ### Documentation
 
 - Redesigned the README with original synthetic SVG artwork, verifiable badges, complete feature descriptions, self-hosting instructions and Chrome extension setup.

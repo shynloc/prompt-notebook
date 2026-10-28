@@ -20,10 +20,13 @@ apps/extension/prompt-notebook-chrome.zip
 .env.*
 !/.env.example
 !/deploy/.env.production.example
+!/deploy/.env.local.example
 
 # Keep database backups and dumps out of source control. Migrations are source.
 backups/
 dumps/
+/.data/
+/data/
 *.sql
 *.sql.gz
 *.sql.bz2

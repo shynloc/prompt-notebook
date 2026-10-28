@@ -5,6 +5,7 @@ import { db } from "@/db/client";
 import { noteShares, promptImages, promptNotes } from "@/db/schema";
 import { ApiError } from "@/lib/api/errors";
 import { decryptCredential, encryptCredential } from "@/modules/ai/credential-crypto";
+import { LocalMediaStore, localImageView, localMediaIdFromObjectKey } from "@/modules/media/local-media-store";
 
 const SHORT_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const MAX_TOKEN_GENERATION_ATTEMPTS = 10;
@@ -116,7 +117,7 @@ export class ShareService {
     const noteIds = [...new Set(rows.map((row) => row.noteId))];
     const images = noteIds.length
       ? await db
-          .select({ noteId: promptImages.noteId, thumbnailUrl: promptImages.thumbnailUrl })
+          .select({ noteId: promptImages.noteId, storageProvider: promptImages.storageProvider, objectKey: promptImages.objectKey, displayUrl: promptImages.displayUrl, thumbnailUrl: promptImages.thumbnailUrl })
           .from(promptImages)
           .where(
             and(
@@ -126,7 +127,7 @@ export class ShareService {
             ),
           )
       : [];
-    const imageByNote = new Map(images.map((image) => [image.noteId, image.thumbnailUrl]));
+    const imageByNote = new Map(images.map((image) => [image.noteId, localImageView(userId, image).thumbnailUrl]));
 
     return rows.map((row) => ({
       id: row.id,
@@ -228,6 +229,42 @@ export class ShareService {
   }
 
   async publicRead(token: string, clientKey = "anonymous") {
+    const row = await this.authorizedShare(token, clientKey);
+    const image = await this.coverImage(row.share.userId, row.note.id, row.share.includeImage);
+    await db
+      .update(noteShares)
+      .set({ viewCount: sql`${noteShares.viewCount} + 1` })
+      .where(eq(noteShares.id, row.share.id));
+    return {
+      title: row.note.title,
+      prompt: row.note.prompt,
+      negativePrompt: row.note.negativePrompt,
+      allowCopy: row.share.allowCopy,
+      image: image ? {
+        displayUrl: image.storageProvider === "local"
+          ? `${new URL(process.env.APP_URL ?? "http://localhost:3000").origin}/api/v1/shares/public/${encodeURIComponent(token)}/image`
+          : image.displayUrl,
+        width: image.width,
+        height: image.height,
+      } : null,
+      source: row.share.includeSource
+        ? { url: row.note.sourceUrl, title: row.note.sourceTitle }
+        : null,
+      expiresAt: row.share.expiresAt,
+    };
+  }
+
+  async publicImage(token: string, clientKey = "anonymous") {
+    const row = await this.authorizedShare(token, clientKey);
+    const image = await this.coverImage(row.share.userId, row.note.id, row.share.includeImage);
+    const id = image?.storageProvider === "local" ? localMediaIdFromObjectKey(row.share.userId, image.objectKey) : null;
+    if (!id || !image) throw new ApiError(404, "SHARE_IMAGE_NOT_FOUND", "分享图片不存在或已关闭");
+    const result = await new LocalMediaStore(row.share.userId).read(id);
+    if (result.metadata.objectKey !== image.objectKey) throw new ApiError(404, "SHARE_IMAGE_NOT_FOUND", "分享图片不存在或已关闭");
+    return result;
+  }
+
+  private async authorizedShare(token: string, clientKey: string) {
     checkRateLimit(clientKey);
     if (!token || token.length > 256) {
       throw new ApiError(404, "SHARE_NOT_FOUND", "This share is unavailable or expired");
@@ -249,32 +286,24 @@ export class ShareService {
       )
       .limit(1);
     if (!row) throw new ApiError(404, "SHARE_NOT_FOUND", "This share is unavailable or expired");
-    const [image] = row.share.includeImage
+    return row;
+  }
+
+  private async coverImage(userId: string, noteId: string, includeImage: boolean) {
+    const [image] = includeImage
       ? await db
           .select({
+            storageProvider: promptImages.storageProvider,
+            objectKey: promptImages.objectKey,
             displayUrl: promptImages.displayUrl,
             width: promptImages.width,
             height: promptImages.height,
           })
           .from(promptImages)
-          .where(and(eq(promptImages.noteId, row.note.id), eq(promptImages.userId, row.note.userId)))
+          .where(and(eq(promptImages.noteId, noteId), eq(promptImages.userId, userId)))
           .orderBy(desc(promptImages.isCover))
           .limit(1)
       : [];
-    await db
-      .update(noteShares)
-      .set({ viewCount: sql`${noteShares.viewCount} + 1` })
-      .where(eq(noteShares.id, row.share.id));
-    return {
-      title: row.note.title,
-      prompt: row.note.prompt,
-      negativePrompt: row.note.negativePrompt,
-      allowCopy: row.share.allowCopy,
-      image: image ?? null,
-      source: row.share.includeSource
-        ? { url: row.note.sourceUrl, title: row.note.sourceTitle }
-        : null,
-      expiresAt: row.share.expiresAt,
-    };
+    return image ?? null;
   }
 }

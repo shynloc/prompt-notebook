@@ -1,5 +1,7 @@
 import nodemailer from "nodemailer";
 
+import { isLocalDeployment } from "@/lib/deployment/config";
+
 export interface MailMessage {
   to: string;
   subject: string;
@@ -47,6 +49,8 @@ class MissingProductionMailer implements Mailer {
 }
 
 export function createMailer(): Mailer {
+  // Only an explicit, validated loopback deployment may log reset links locally.
+  if (isLocalDeployment()) return new ConsoleMailer();
   const host = process.env.SMTP_HOST;
   const from = process.env.SMTP_FROM;
 

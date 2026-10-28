@@ -1,16 +1,16 @@
 # Backup and restore
 
-Prompt text, accounts, tags, image references, extension devices, custom terms and model configuration live in PostgreSQL. Image bytes live in the configured image host and must follow that service's own backup policy. Keep a separate protected copy of the credential-encryption key ring: a database dump alone cannot decrypt saved credentials after key loss.
+Prompt text, accounts, tags, image references, extension devices, custom terms and model configuration live in PostgreSQL. Image bytes live in the instance-local media volume or the configured external image host. Keep a separate protected copy of the credential-encryption key ring: a database dump alone cannot decrypt saved credentials after key loss.
 
-## Current limitation: do not equate gzip/SHA checks with a valid database dump
+## Backup checks and their limits
 
-The current `scripts/backup-postgres.sh` runs `pg_dump | gzip` under POSIX `sh` with `set -e`, without separately checking the producer's exit status. If `pg_dump` fails but `gzip` succeeds, the script can publish an empty or truncated dump that still passes gzip and SHA-256 checks. **This known reliability risk is not fixed by the documentation or ignore rules.**
+The backup script first writes a private temporary SQL file, checks `pg_dump`'s exit status and verifies that the dump is nonempty, then compresses it. It validates gzip and publishes the dump/sidecar without overwriting an existing backup. The former unchecked `pg_dump | gzip` pipeline is no longer used. Temporary dump files are cleaned on failure, and failed dumps are not recorded as successful backups. The backup directory needs space for the uncompressed SQL plus its gzip and a filesystem supporting hard-link publication; unsupported targets fail rather than replacing an older backup.
 
 - `gzip -t` checks that the compressed stream is readable.
 - A SHA-256 sidecar checks that the bytes have not changed since the sidecar was created.
 - Neither proves that `pg_dump` succeeded, that every expected table/row is present, or that an actual restore will work.
 
-Do not make the bundled pipeline your only backup or assume an automatic-update backup is sufficient. Maintain an independent database backup process that explicitly checks `pg_dump` success, keep an encrypted off-host copy, monitor failures and perform restore drills. A future implementation should address producer failure before claiming full backup reliability.
+Successful command execution and byte checks are not a substitute for recovery testing. Keep an encrypted off-host copy, monitor backup failures and regularly restore into an isolated environment. Maintain an independent recovery copy rather than assuming a single automatic-update backup is sufficient.
 
 ## Bundled backup command
 
@@ -23,7 +23,9 @@ sudo env ENV_FILE=/opt/prompt-notebook/.env \
   ./scripts/backup-postgres.sh
 ```
 
-These are example paths. Review `COMPOSE_PROJECT_NAME`, Compose configuration and the target database before executing any operation. The script writes a private gzip file and SHA-256 sidecar, validates the compressed stream and applies retention only to its named Prompt Notebook dumps. Those checks do not remove the limitation above. Treat backups as private data and keep them outside Git and Docker build contexts.
+These are example paths. Review `COMPOSE_PROJECT_NAME`, Compose configuration and the target database before executing any operation. The script writes a private gzip file and portable SHA-256 sidecar, validates the compressed stream and applies retention only to its named Prompt Notebook dumps. These checks do not establish logical completeness. Treat backups as private data and keep them outside Git and Docker build contexts.
+
+Back up the `local_media_data` Docker volume as well when using instance-local images, or follow your external image host's backup policy. For a consistent full-instance snapshot, quiesce web/worker writes first, then back up the database, media volume and protected configuration; do not delete any volume to stop services. Local Docker installations use the separate `prompt-notebook-local` Compose project and `.env.local-docker`; select that project explicitly for backup operations.
 
 ## Restore drill
 

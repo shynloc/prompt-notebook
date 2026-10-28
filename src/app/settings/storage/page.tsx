@@ -3,7 +3,7 @@ import { StorageConfigurationManager } from "@/components/media/storage-configur
 import { SettingsLayout } from "@/components/settings/settings-layout";
 
 export default function StorageSettingsPage() {
-  return <AppShell><SettingsLayout active="storage" kicker="IMAGE STORAGE" title="图床" intro="为当前账号连接独立图片存储。笔记封面、网页图片导入和 ImageHub 生成作品都会使用这里的配置。">
+  return <AppShell><SettingsLayout active="storage" kicker="IMAGE STORAGE" title="图片存储" intro="使用站点本地存储，或连接自己的外部图床。保存后，笔记封面、参考图、角色图片和生成作品的新上传会使用所选方式。">
     <StorageConfigurationManager />
   </SettingsLayout></AppShell>;
 }

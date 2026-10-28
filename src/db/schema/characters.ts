@@ -94,7 +94,7 @@ export const characterProfileImages = pgTable(
     uniqueIndex("character_profile_images_one_cover_unique").on(table.profileId).where(sql`${table.isCover} = true and ${table.deletedAt} is null`),
     uniqueIndex("character_profile_images_one_primary_unique").on(table.profileId).where(sql`${table.isPrimary} = true and ${table.deletedAt} is null`),
     index("character_profile_images_user_profile_idx").on(table.userId, table.profileId),
-    check("character_profile_images_provider_check", sql`${table.storageProvider} in ('picbed', 'external')`),
+    check("character_profile_images_provider_check", sql`${table.storageProvider} in ('picbed', 'external', 'local')`),
     check("character_profile_images_mime_check", sql`${table.mimeType} in ('image/jpeg', 'image/png', 'image/webp', 'image/gif')`),
     check("character_profile_images_view_check", sql`${table.viewType} in ('portrait', 'half_body', 'full_body', 'left', 'right', 'back', 'expression', 'outfit', 'other')`),
     check("character_profile_images_status_check", sql`${table.status} in ('ready', 'failed')`),

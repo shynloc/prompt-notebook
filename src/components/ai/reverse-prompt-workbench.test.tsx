@@ -7,6 +7,27 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 describe("reverse prompt workbench", () => {
+  it("allows the current site's private local image URL without requiring HTTPS", async () => {
+    const imageUrl = `${window.location.origin}/api/v1/media/files/11111111-1111-4111-8111-111111111111`;
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ data: reverseResultFixture() }));
+    render(<ReversePromptWorkbench initialSource={{ imageUrl }} />);
+    fireEvent.click(screen.getByRole("button", { name: "AI 一键反推" }));
+    await screen.findByText("反推完成。请核对图片观察、修改摘要和推测内容，再使用结果。");
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({ imageUrl });
+  });
+
+  it.each([
+    "http://example.com/image.png",
+    `${window.location.origin}/not-a-private-image`,
+    `${window.location.origin}/api/v1/media/files/11111111-1111-4111-8111-111111111111?redirect=http://example.com`,
+  ])("does not treat an arbitrary HTTP URL as private local media: %s", async (imageUrl) => {
+    const fetcher = vi.spyOn(globalThis, "fetch");
+    render(<ReversePromptWorkbench initialSource={{ imageUrl }} />);
+    fireEvent.click(screen.getByRole("button", { name: "AI 一键反推" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("HTTPS 图片直链");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("sends requirements, preserves observations, edits modules and invalidates changed inputs", async () => {
     const fetcher = vi
       .spyOn(globalThis, "fetch")

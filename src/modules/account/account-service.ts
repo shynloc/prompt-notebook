@@ -10,6 +10,7 @@ import {
 } from "@/db/schema";
 import { ApiError } from "@/lib/api/errors";
 import { auth } from "@/lib/auth/server";
+import { LocalMediaStore } from "@/modules/media/local-media-store";
 
 const MAX_TRASH_PURGE = 500;
 
@@ -115,6 +116,11 @@ export class AccountService {
       tx.delete(user).where(eq(user.id, userId)).returning({ id: user.id }),
     );
     if (!deleted.length) throw new ApiError(404, "ACCOUNT_NOT_FOUND", "账户不存在");
-    return { deleted: true };
+    // Metadata and sessions are already gone; failed filesystem cleanup cannot
+    // restore access. Tell the operator without logging paths or user content.
+    let localMediaCleanupPending = false;
+    try { await new LocalMediaStore(userId).purgeDeletedAccount(); }
+    catch { localMediaCleanupPending = true; console.error("Deleted-account local media cleanup requires administrator attention"); }
+    return { deleted: true, localMediaCleanupPending };
   }
 }

@@ -10,7 +10,7 @@ export const tagNameSchema = z
   .transform((value) => value.normalize("NFKC"));
 
 export const imageInputSchema = z.object({
-  storageProvider: z.enum(["picbed", "external"]),
+  storageProvider: z.enum(["picbed", "external", "local"]),
   objectKey: z.string().trim().min(1).max(1000),
   displayUrl: z.url().max(4000),
   thumbnailUrl: z.url().max(4000),

@@ -31,7 +31,7 @@ const attributesSchema = z.record(z.string().trim().min(1).max(80), attributeVal
 
 export const characterImageInputSchema = z.object({
   id: z.uuid().optional(),
-  storageProvider: z.enum(["picbed", "external"]),
+  storageProvider: z.enum(["picbed", "external", "local"]),
   objectKey: z.string().trim().min(1).max(1_000),
   displayUrl: httpUrl,
   thumbnailUrl: httpUrl,

@@ -646,7 +646,7 @@ export function ImageHubWorkbench() {
         <div>
           <span className="section-kicker">AI IMAGE LAB / DURABLE QUEUE</span>
           <h2>AI ImageHub</h2>
-          <p>在笔记本里验证提示词、比较构图并保存作品。任务离开页面后继续执行，生成图只存入图床。</p>
+          <p>在笔记本里验证提示词、比较构图并保存作品。任务离开页面后继续执行，生成图保存到所选的站点本地存储或外部图床。</p>
         </div>
         <div className="imagehub-queue-badge" data-active={activeJobs.length > 0}>
           <span aria-hidden="true" />
