@@ -4,6 +4,12 @@ All notable changes use the Keep a Changelog structure. Versions follow Semantic
 
 ## [Unreleased]
 
+### Documentation
+
+- Redesigned the README with original synthetic SVG artwork, verifiable badges, complete feature descriptions, self-hosting instructions and Chrome extension setup.
+- Audited public source/history and the released extension for sensitive data, clarified production SMTP/protocol requirements and documented remaining privacy/dependency/backup limitations.
+- Added documentation link/artwork checks to CI and excluded private environment variants, dumps and keys from Git and Docker build contexts.
+
 ## [1.8.0] - 2026-10-22
 
 ### Added

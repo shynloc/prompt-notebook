@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="760" viewBox="0 0 1600 760" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Prompt Notebook — Capture. Organize. Create.</title>
+  <desc id="desc">An original editorial illustration of a self-hosted prompt notebook, with invented geometric artwork and fictional prompt cards. No real application screenshots or user data.</desc>
+  <defs>
+    <radialGradient id="ambient" cx="0" cy="0" r="1" gradientTransform="translate(1195 320) rotate(148) scale(680 490)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#233A4A"/><stop offset="1" stop-color="#101820"/>
+    </radialGradient>
+    <linearGradient id="art" x1="847" y1="149" x2="1288" y2="490" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E9B693"/><stop offset=".5" stop-color="#D97750"/><stop offset="1" stop-color="#924B3C"/>
+    </linearGradient>
+    <linearGradient id="sphere" x1="1000" y1="193" x2="1122" y2="337" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF0C8"/><stop offset=".53" stop-color="#F5BB7F"/><stop offset="1" stop-color="#CC6A47"/>
+    </linearGradient>
+    <pattern id="grid" width="44" height="44" patternUnits="userSpaceOnUse">
+      <path d="M44 0H0V44" stroke="#D7E3E9" stroke-opacity=".045"/>
+    </pattern>
+    <pattern id="paper" width="8" height="8" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r=".6" fill="#151D24" fill-opacity=".08"/>
+    </pattern>
+    <clipPath id="artClip"><rect x="850" y="162" width="438" height="299" rx="2"/></clipPath>
+  </defs>
+
+  <rect width="1600" height="760" rx="12" fill="#101820"/>
+  <rect width="1600" height="760" rx="12" fill="url(#ambient)"/>
+  <rect width="1600" height="760" rx="12" fill="url(#grid)"/>
+  <path d="M1 43H1599M1 717H1599" stroke="#E8E1D5" stroke-opacity=".1"/>
+  <path d="M755 44V716" stroke="#E8E1D5" stroke-opacity=".09"/>
+  <path d="M1191 86C1383 86 1517 219 1517 390S1383 694 1191 694" stroke="#B9D3DE" stroke-opacity=".13"/>
+  <path d="M1191 116C1366 116 1487 236 1487 390S1366 664 1191 664" stroke="#B9D3DE" stroke-opacity=".07"/>
+
+  <rect x="92" y="83" width="35" height="35" rx="2" fill="#F36B45"/>
+  <path d="M101 94H111C116 94 116 103 111 103H101V111M119 94V111" stroke="#101820" stroke-width="2.4"/>
+  <text x="144" y="106" fill="#E8E1D5" font-family="Consolas, 'Liberation Mono', monospace" font-size="15" letter-spacing="3">THE CREATIVE FIELD NOTES</text>
+
+  <text x="86" y="237" fill="#F8F0E2" font-family="Arial, Helvetica, sans-serif" font-size="112" font-weight="800" letter-spacing="-6">PROMPT</text>
+  <text x="89" y="344" fill="#F8F0E2" font-family="Georgia, 'DejaVu Serif', serif" font-size="104" font-style="italic" letter-spacing="-5">Notebook.</text>
+  <rect x="93" y="377" width="62" height="4" fill="#F36B45"/>
+  <text x="92" y="424" fill="#F36B45" font-family="Consolas, 'Liberation Mono', monospace" font-size="20" font-weight="700" letter-spacing="2">CAPTURE. ORGANIZE. CREATE.</text>
+  <text x="92" y="474" fill="#B8C6CD" font-family="Arial, Helvetica, sans-serif" font-size="24">Turn scattered prompts into a living library.</text>
+  <text x="92" y="509" fill="#B8C6CD" font-family="Arial, Helvetica, sans-serif" font-size="24">Keep the idea, the image, and the way you made it.</text>
+
+  <g font-family="Consolas, 'Liberation Mono', monospace" font-size="13" letter-spacing="1.2">
+    <rect x="92" y="557" width="145" height="36" rx="18" stroke="#40515C"/>
+    <circle cx="111" cy="575" r="3" fill="#8EBA9E"/>
+    <text x="125" y="580" fill="#DAE0DD">SELF-HOSTED</text>
+    <rect x="248" y="557" width="185" height="36" rx="18" stroke="#40515C"/>
+    <text x="267" y="580" fill="#DAE0DD">YOUR AI WORKFLOW</text>
+    <rect x="444" y="557" width="145" height="36" rx="18" stroke="#40515C"/>
+    <text x="466" y="580" fill="#DAE0DD">MIT LICENSE</text>
+  </g>
+
+  <g transform="rotate(8 1315 330)">
+    <rect x="1253" y="149" width="234" height="357" rx="5" fill="#101820" fill-opacity=".4"/>
+    <rect x="1243" y="139" width="234" height="357" rx="5" fill="#263D49" stroke="#5C7481"/>
+    <path d="M1265 176H1451M1265 194H1368" stroke="#6E8790" stroke-width="4"/>
+    <circle cx="1360" cy="303" r="67" stroke="#F1E0C5" stroke-width="1.4"/>
+    <ellipse cx="1360" cy="303" rx="95" ry="25" transform="rotate(-30 1360 303)" stroke="#F1E0C5" stroke-width="1.4"/>
+    <path d="M1265 412H1448M1265 430H1417M1265 448H1355" stroke="#6E8790" stroke-width="3"/>
+  </g>
+
+  <rect x="844" y="127" width="463" height="448" rx="5" fill="#060D12" fill-opacity=".4"/>
+  <rect x="832" y="115" width="469" height="450" rx="5" fill="#F1E7D6"/>
+  <rect x="832" y="115" width="469" height="450" rx="5" fill="url(#paper)"/>
+  <text x="851" y="144" fill="#263744" font-family="Consolas, 'Liberation Mono', monospace" font-size="12" font-weight="700" letter-spacing="1.4">FIELD NOTE / 001</text>
+  <circle cx="1276" cy="139" r="4" fill="#F36B45"/>
+  <g clip-path="url(#artClip)">
+    <rect x="850" y="162" width="438" height="299" fill="url(#art)"/>
+    <path d="M826 395C946 302 1088 314 1316 384V499H826V395Z" fill="#AB583F"/>
+    <path d="M823 442C942 353 1141 367 1309 419V496H823V442Z" fill="#344A50"/>
+    <path d="M832 474C976 396 1116 421 1320 462V512H832V474Z" fill="#20363E"/>
+    <circle cx="1065" cy="272" r="76" fill="url(#sphere)"/>
+    <ellipse cx="1065" cy="272" rx="137" ry="28" transform="rotate(-26 1065 272)" stroke="#FFF0C8" stroke-opacity=".8" stroke-width="1.5"/>
+    <path d="M859 181H1270M859 441H1270M869 171V451M1269 171V451" stroke="#F9E2C5" stroke-opacity=".28"/>
+    <path d="M894 206H918M906 194V218M1214 391H1238M1226 379V403" stroke="#FFECD2" stroke-opacity=".7"/>
+  </g>
+  <text x="852" y="500" fill="#172630" font-family="Georgia, 'DejaVu Serif', serif" font-size="27" font-style="italic">Orbital garden</text>
+  <text x="852" y="525" fill="#68716C" font-family="Consolas, 'Liberation Mono', monospace" font-size="12">WARM LIGHT  /  BOLD GEOMETRY  /  NEW IDEAS</text>
+  <path d="M853 542H1279" stroke="#CFC4B3"/>
+
+  <rect x="1086" y="414" width="388" height="235" rx="4" fill="#050A0E" fill-opacity=".5"/>
+  <rect x="1074" y="402" width="388" height="235" rx="4" fill="#182834" stroke="#59717D"/>
+  <rect x="1074" y="402" width="4" height="235" rx="2" fill="#F36B45"/>
+  <circle cx="1095" cy="424" r="3" fill="#F36B45"/>
+  <circle cx="1108" cy="424" r="3" fill="#607D89"/>
+  <circle cx="1121" cy="424" r="3" fill="#607D89"/>
+  <text x="1437" y="428" text-anchor="end" fill="#9FB6BE" font-family="Consolas, 'Liberation Mono', monospace" font-size="11" letter-spacing="1.2">PROMPT / STRUCTURE</text>
+  <path d="M1093 443H1441" stroke="#354B57"/>
+  <g font-family="Consolas, 'Liberation Mono', monospace" font-size="16">
+    <text x="1097" y="474" fill="#C6D4D8">{</text>
+    <text x="1115" y="503" fill="#F2AB83">&quot;subject&quot;<tspan fill="#C6D4D8">: &quot;orbital garden&quot;,</tspan></text>
+    <text x="1115" y="532" fill="#F2AB83">&quot;light&quot;<tspan fill="#C6D4D8">: &quot;golden hour&quot;,</tspan></text>
+    <text x="1115" y="561" fill="#F2AB83">&quot;style&quot;<tspan fill="#C6D4D8">: &quot;graphic study&quot;</tspan></text>
+    <text x="1097" y="590" fill="#C6D4D8">}</text>
+  </g>
+  <text x="1097" y="616" fill="#88A793" font-family="Consolas, 'Liberation Mono', monospace" font-size="11" letter-spacing="1">IDEA + IMAGE + CONTEXT</text>
+
+  <path d="M92 660H1508" stroke="#60727D" stroke-opacity=".45"/>
+  <text x="92" y="690" fill="#9BB0BB" font-family="Consolas, 'Liberation Mono', monospace" font-size="12" letter-spacing="1.5">YOUR IDEAS. YOUR MODELS. YOUR SERVER.</text>
+  <text x="1508" y="690" text-anchor="end" fill="#7F929C" font-family="Consolas, 'Liberation Mono', monospace" font-size="11">SYNTHETIC ILLUSTRATION · NO USER DATA</text>
+</svg>

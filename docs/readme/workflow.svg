@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="580" viewBox="0 0 1200 580" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">One notebook. Your own stack.</title>
+  <desc id="desc">A synthetic architecture diagram: a browser and Chrome extension connect to a self-hosted web application with authentication, PostgreSQL and Redis. User-configured AI providers and an image host are separate external services. No WordPress or author-owned server is required.</desc>
+  <defs>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".8" fill="#DDE8E8" fill-opacity=".08"/></pattern>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M1 1L7 4L1 7" stroke="#F28B60" stroke-width="1.5" fill="none"/></marker>
+    <marker id="arrowMuted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M1 1L7 4L1 7" stroke="#8CA8AF" stroke-width="1.5" fill="none"/></marker>
+  </defs>
+  <rect width="1200" height="580" rx="12" fill="#101C25"/>
+  <rect width="1200" height="580" rx="12" fill="url(#dots)"/>
+  <rect x="34" y="35" width="43" height="22" rx="2" fill="#F36B45"/>
+  <text x="55.5" y="50" text-anchor="middle" fill="#101C25" font-family="Consolas, 'Liberation Mono', monospace" font-size="11" font-weight="700">FLOW</text>
+  <text x="92" y="53" fill="#9CB3BB" font-family="Consolas, 'Liberation Mono', monospace" font-size="12" letter-spacing="2">LOCAL CONTROL / CONNECTED CREATIVITY</text>
+  <text x="34" y="104" fill="#F5EDDE" font-family="Georgia, 'DejaVu Serif', serif" font-size="39" font-style="italic">One notebook. Your own stack.</text>
+
+  <g font-family="Consolas, 'Liberation Mono', monospace" font-size="11" letter-spacing="1.5">
+    <text x="36" y="151" fill="#F28B60">01 / COLLECT</text>
+    <text x="397" y="151" fill="#F28B60">02 / ORGANIZE</text>
+    <text x="913" y="151" fill="#F28B60">03 / CREATE</text>
+  </g>
+
+  <rect x="34" y="171" width="264" height="269" rx="5" fill="#1B2B36" stroke="#415865"/>
+  <path d="M35 207H297" stroke="#415865"/>
+  <circle cx="53" cy="189" r="3" fill="#F28B60"/><circle cx="66" cy="189" r="3" fill="#657D87"/><circle cx="79" cy="189" r="3" fill="#657D87"/>
+  <rect x="96" y="181" width="164" height="16" rx="3" fill="#2B414D"/>
+  <text x="56" y="246" fill="#F5EDDE" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700">Browser + extension</text>
+  <rect x="56" y="268" width="220" height="75" rx="3" fill="#EEE4D2"/>
+  <rect x="68" y="283" width="190" height="12" rx="1" fill="#EDD1AF"/>
+  <path d="M69 289H248M69 309H222M69 327H181" stroke="#6D776E" stroke-width="3"/>
+  <path d="M254 313L264 337L251 333L245 345Z" fill="#F36B45" stroke="#18303A" stroke-width="1.5"/>
+  <text x="56" y="376" fill="#A9BFC7" font-family="Arial, Helvetica, sans-serif" font-size="16">Select text. Save the source.</text>
+  <text x="56" y="401" fill="#A9BFC7" font-family="Arial, Helvetica, sans-serif" font-size="16">Use desktop or mobile web.</text>
+
+  <path d="M299 305H380" stroke="#F28B60" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="339" y="289" text-anchor="middle" fill="#8CA8AF" font-family="Consolas, 'Liberation Mono', monospace" font-size="10">HTTPS</text>
+
+  <rect x="394" y="171" width="405" height="269" rx="5" fill="#F1E7D6"/>
+  <rect x="394" y="171" width="5" height="269" rx="2" fill="#F36B45"/>
+  <text x="418" y="205" fill="#7A766B" font-family="Consolas, 'Liberation Mono', monospace" font-size="11" letter-spacing="1.6">YOUR SERVER / DOCKER COMPOSE</text>
+  <text x="418" y="246" fill="#172A33" font-family="Georgia, 'DejaVu Serif', serif" font-size="31" font-style="italic">Prompt Notebook</text>
+  <path d="M418 267H775" stroke="#C4BCAC"/>
+  <rect x="418" y="286" width="167" height="49" rx="3" fill="#DDD6C7"/>
+  <rect x="603" y="286" width="172" height="49" rx="3" fill="#DDD6C7"/>
+  <rect x="418" y="349" width="167" height="49" rx="3" fill="#172A33"/>
+  <rect x="603" y="349" width="172" height="49" rx="3" fill="#172A33"/>
+  <g font-family="Consolas, 'Liberation Mono', monospace" font-size="14" text-anchor="middle">
+    <text x="501" y="308" fill="#20343E">Web app + auth</text>
+    <text x="689" y="308" fill="#20343E">Generation worker</text>
+    <text x="501" y="379" fill="#F1E7D6">PostgreSQL</text>
+    <text x="689" y="379" fill="#F1E7D6">Redis queue</text>
+  </g>
+  <g font-family="Consolas, 'Liberation Mono', monospace" font-size="10" text-anchor="middle" fill="#666E67">
+    <text x="501" y="324">ACCOUNT / LIBRARY</text>
+    <text x="689" y="324">DURABLE IMAGE JOBS</text>
+  </g>
+  <text x="418" y="423" fill="#626C65" font-family="Arial, Helvetica, sans-serif" font-size="13">Your accounts, prompts and encrypted credentials.</text>
+
+  <path d="M800 302H848V235H900" stroke="#F28B60" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M848 302V374H900" stroke="#F28B60" stroke-width="2" marker-end="url(#arrow)"/>
+  <circle cx="848" cy="302" r="4" fill="#F28B60"/>
+
+  <rect x="913" y="171" width="253" height="129" rx="5" fill="#1B2B36" stroke="#415865"/>
+  <path d="M933 198H946M939.5 191.5V204.5M955 194L960 199L955 204" stroke="#F28B60" stroke-width="1.5"/>
+  <text x="933" y="231" fill="#F5EDDE" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700">Your AI provider</text>
+  <text x="933" y="258" fill="#A9BFC7" font-family="Arial, Helvetica, sans-serif" font-size="14">Optimize · analyze · generate</text>
+  <text x="933" y="281" fill="#88A793" font-family="Consolas, 'Liberation Mono', monospace" font-size="10">USER-CONFIGURED API</text>
+
+  <rect x="913" y="316" width="253" height="124" rx="5" fill="#1B2B36" stroke="#415865"/>
+  <rect x="934" y="334" width="23" height="17" rx="1" stroke="#F28B60" stroke-width="1.4"/>
+  <path d="M936 349L942 341L947 345L951 339L955 349" stroke="#F28B60" stroke-width="1.2"/>
+  <text x="933" y="378" fill="#F5EDDE" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700">Your image host</text>
+  <text x="933" y="404" fill="#A9BFC7" font-family="Arial, Helvetica, sans-serif" font-size="14">Reference images + artwork</text>
+  <text x="933" y="426" fill="#88A793" font-family="Consolas, 'Liberation Mono', monospace" font-size="10">URLS + METADATA IN NOTEBOOK</text>
+
+  <path d="M597 443V477H166V449" stroke="#8CA8AF" stroke-width="1.5" stroke-dasharray="5 6" marker-end="url(#arrowMuted)"/>
+  <rect x="298" y="465" width="178" height="24" rx="12" fill="#101C25"/>
+  <text x="387" y="481" text-anchor="middle" fill="#A9BFC7" font-family="Consolas, 'Liberation Mono', monospace" font-size="11" letter-spacing="1">SYNC / READ-ONLY SHARE</text>
+  <path d="M34 518H1166" stroke="#415865"/>
+  <text x="34" y="549" fill="#D4DDD9" font-family="Consolas, 'Liberation Mono', monospace" font-size="12" letter-spacing="1">NO WORDPRESS. NO AUTHOR-OWNED SERVICE REQUIRED.</text>
+  <text x="1166" y="549" text-anchor="end" fill="#7F98A2" font-family="Consolas, 'Liberation Mono', monospace" font-size="10">SYNTHETIC ILLUSTRATION · NO USER DATA</text>
+</svg>

@@ -8,8 +8,10 @@
 | `DATABASE_URL` | yes | PostgreSQL connection string; Compose provides this internally |
 | `CREDENTIAL_ENCRYPTION_KEYS` | yes | Comma-separated `key-id:key` ring; every key is exactly 32 bytes in hex or base64url |
 | `CREDENTIAL_ACTIVE_KEY_ID` | yes | Key ID used for newly encrypted model and image-storage credentials |
-| `SMTP_HOST`, `SMTP_PORT` | production email | Verification and password-reset mail server |
-| `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | production email | Mail credentials and sender |
+| `POSTGRES_PASSWORD` | Docker production | Database password; use a long random hex value to avoid connection-URL reserved characters |
+| `SMTP_HOST`, `SMTP_FROM` | production signup | Working mail server and permitted sender; required for default production email verification and password reset |
+| `SMTP_PORT` | optional | SMTP port; default `587`; `465` enables implicit TLS |
+| `SMTP_USER`, `SMTP_PASSWORD` | provider-dependent | SMTP credentials when the mail provider requires authentication |
 | `APP_IMAGE`, `IMAGE_TAG` | deployment | Container repository and immutable revision tag |
 | `APP_PORT` | optional | Loopback port for the reverse proxy; default `5488` |
 | `AI_CONNECTION_TIMEOUT_MS` | optional | AI connection-test timeout; default `10000` (10 seconds) |
@@ -20,6 +22,16 @@
 Image-host endpoints, image-host tokens, AI Base URLs, model IDs and model API keys are user-owned database settings. They must not be fixed in source code, Docker images, the Chrome extension, or shared server environment variables.
 
 Never prefix a secret with `NEXT_PUBLIC_` or commit an environment file.
+
+## Standalone deployment and required email
+
+Docker deployment does not require Node.js or npm on the host: the image builds and packages them. The host needs Git, Docker Engine/Compose, `curl`, OpenSSL for generating secrets, and an HTTPS reverse proxy. Node.js 22 is used for local development or building the Chrome extension from source. Use your own `APP_URL`; WordPress, Cloudflare and the author's infrastructure are not required.
+
+Keep populated configuration and backups outside the checkout, for example `/opt/prompt-notebook/.env` and `/opt/prompt-notebook/backups`, and pass `ENV_FILE` to deployment/backup scripts. The versioned `.env.example` files are templates, not usable production credentials. Choose independent random values for the database password, authentication secret and credential-encryption key.
+
+**Production requires email verification by default. Configure working SMTP before registering users.** An empty `SMTP_HOST` does not select a production console-mail fallback, and no documented environment switch disables verification. Infrastructure readiness can still pass while mail delivery is unavailable; complete an actual signup/verification test. `SMTP_FROM` must be a sender permitted by the mail service. Port 465 uses implicit TLS, while other ports use the provider's STARTTLS support.
+
+Text-only notes do not require AI or image-host credentials. Image uploads, character photos and generated-image storage need a configured compatible image host; AI features need the appropriate model connections. Those are per-user settings after registration, not author-owned prerequisites.
 
 ## Authentication client IPs
 
@@ -72,6 +84,10 @@ Official references: [image generation guide](https://developers.openai.com/api/
 ## User-configured endpoints
 
 Model and image-host endpoints must be public HTTPS origins on port 443, without embedded credentials, query or fragment. Local, private, link-local, metadata, reserved and redirecting targets are rejected. Requests use DNS pinning to reduce DNS-rebinding risk.
+
+The model adapter expects OpenAI-compatible authentication and endpoint contracts; a vendor's unrelated API or a private/local Ollama endpoint is not automatically supported. A custom model-family selection declares which request features to send, not verified support from that supplier.
+
+The image adapter currently expects a Picbed-compatible `POST multipart/form-data` upload containing `file` and `path`, authenticated with `X-Auth-Token`. The response may expose `url`, `publicUrl`, `public_url`, `href`, `location`, `key` or `path`, directly or in a nested `data` object. It must resolve to a stable publicly readable HTTPS image URL; expiring signed query URLs are not supported. This is not direct generic S3/R2/Cloudinary support; those services require a compatible gateway or a separately implemented adapter. Provider tokens remain server-side. Testing image storage uploads a small real test image.
 
 The Chrome extension ships with no default server. The user enters an HTTPS origin in the side panel; the extension requests permission only for that origin, verifies `/health/live`, clears tokens after a server switch, then uses PKCE authorization. Plain HTTP is accepted only for `localhost` and `127.0.0.1` during development.
 

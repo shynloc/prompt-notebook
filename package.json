@@ -21,6 +21,7 @@
     "start": "next start",
     "worker:generation": "node dist/generation-worker.mjs",
     "lint": "eslint .",
+    "docs:check": "node scripts/check-docs.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:watch": "vitest",
