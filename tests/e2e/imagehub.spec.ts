@@ -49,6 +49,56 @@ const succeeded = {
 };
 
 for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+  test(`keeps 1K 2K and 4K available for the unverified 2.5 shorthand at ${viewport.width}px`, async ({ page }, testInfo) => {
+    await signUp(page);
+    await page.setViewportSize(viewport);
+    const profileId = "44444444-4444-4444-8444-444444444444";
+    await page.route("**/api/v1/ai/configurations", route => route.fulfill({ json: { data: [{
+      enabled: true, modelEnabled: true, modelProfileId: profileId,
+      modelId: "gpt-image-2.5", name: "Synthetic compatible gateway", displayName: "Image 2.5",
+      capabilities: ["image_generation"], defaultParameters: {},
+    }] } }));
+    await page.route("**/api/v1/ai/preferences", route => route.fulfill({ json: { data: [{ purpose: "image_generation", modelProfileId: profileId }] } }));
+    await page.route("**/api/v1/generations?**", route => route.fulfill({ json: { data: [] } }));
+    await page.route(`**/api/v1/generations/${jobId}*`, route => route.fulfill({ json: { data: queued } }));
+    let submitted: Record<string, unknown> | null = null;
+    await page.route("**/api/v1/generations", async route => {
+      if (route.request().method() !== "POST") { await route.fallback(); return; }
+      const form = await new Request("http://localhost/generation", {
+        method: "POST", headers: { "content-type": route.request().headers()["content-type"] },
+        body: new Uint8Array(route.request().postDataBuffer() ?? []),
+      }).formData();
+      submitted = JSON.parse(String(form.get("payload")));
+      await route.fulfill({ status: 201, json: { data: queued } });
+    });
+    await page.goto("/imagehub");
+    await expect(page.getByLabel("本次生图模型")).toHaveValue(profileId);
+    const resolutions = page.getByRole("group", { name: "输出分辨率", exact: true });
+    await expect(resolutions.getByRole("button", { name: /^1K/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(resolutions.getByRole("button", { name: /^2K/ })).toBeEnabled();
+    await expect(resolutions.getByRole("button", { name: /^4K/ })).toBeEnabled();
+    await expect(page.getByRole("group", { name: "渲染质量", exact: true }).getByRole("button")).toHaveCount(6);
+    await expect(page.getByText(/供应商.*别名|别名.*供应商/).first()).toBeVisible();
+    await page.getByLabel("Prompt", { exact: true }).fill("Synthetic notebook illustration, vertical composition");
+    await resolutions.getByRole("button", { name: /^2K/ }).click();
+    await expect(resolutions.getByRole("button", { name: /^2K/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(resolutions).toContainText("2048×2048");
+    await expect(resolutions).toContainText("实验");
+    await page.getByRole("button", { name: /手机竖屏.*9:16/ }).click();
+    await expect(resolutions.getByRole("button", { name: /^2K/ })).toContainText("1152×2048");
+    await page.getByRole("button", { name: /标准.*均衡/ }).click();
+    await resolutions.getByRole("button", { name: /^4K/ }).click();
+    await expect(page.getByRole("button", { name: /标准.*均衡/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(resolutions.getByRole("button", { name: /^4K/ })).toContainText("2160×3840");
+    await page.getByRole("button", { name: /最高.*最高质量/ }).click();
+    await page.locator(".imagehub-console").screenshot({ path: testInfo.outputPath(`imagehub-alias-resolution-${viewport.width}.png`) });
+    const dimensions = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.width);
+    await page.getByRole("button", { name: /开始生成/ }).click();
+    await expect(page.getByText("已进入生成队列")).toBeVisible();
+    expect(submitted).toMatchObject({ modelProfileId: profileId, width: 2160, height: 3840, quality: "max" });
+  });
+
   test(`supports native 2.5 output and a real local edit mask at ${viewport.width}px`, async ({ page }, testInfo) => {
     await signUp(page);
     await page.setViewportSize(viewport);

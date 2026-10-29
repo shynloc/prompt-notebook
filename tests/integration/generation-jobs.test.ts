@@ -157,6 +157,46 @@ function input(idempotencyKey: string = randomUUID()) {
 }
 
 describe("durable generation jobs", () => {
+  it.each([[3840, 2160], [2160, 3840]])("preserves a bare GPT Image 2.5 alias and %ix%i max-quality settings from database to worker", async (width, height) => {
+    const owner = await sessionFor(`generation-alias-${width}-${height}`);
+    const modelId = "gpt-image-2.5";
+    const configuration = await configureImageModel(owner.cookie, "sk-image-secret", {
+      modelId,
+      defaultParameters: { imageModelFamily: "auto" },
+    });
+    const queue = new RecordingQueue();
+    const media = new RecordingMediaStore();
+    const service = new GenerationService({ queue, media });
+    const requestInput = { ...input(), width, height, quality: "max" as const };
+    const created = await service.create(owner.userId, requestInput);
+    const [persisted] = await db.select().from(aiGenerationJobs).where(and(
+      eq(aiGenerationJobs.id, created.id),
+      eq(aiGenerationJobs.userId, owner.userId),
+    ));
+    expect(persisted).toMatchObject({
+      modelProfileId: configuration.modelProfileId,
+      modelId, width, height, quality: "max", status: "queued",
+      parameters: { imageModelFamily: "auto", output_format: "jpeg", background: "auto", output_compression: 90 },
+    });
+    expect(queue.enqueued).toEqual([{ jobId: created.id, maxAttempts: 3 }]);
+
+    // The provider and storage are in-memory fixtures; no image API or image host is contacted.
+    const generateImages = vi.fn<(input: AiImageGenerationInput) => Promise<{ images: Array<{ data: Buffer }> }>>(
+      async () => ({ images: [{ data: png }] }),
+    );
+    const processor = new GenerationWorkerProcessor({ media, providers: new AiProviderRegistry([{
+      type: "openai_compatible", testConnection: vi.fn(), generateImages,
+    }]) });
+    await expect(processor.process(created.id, { attempt: 1, maxAttempts: 3 })).resolves.toEqual({ status: "succeeded" });
+    expect(generateImages).toHaveBeenCalledTimes(1);
+    expect(generateImages).toHaveBeenCalledWith(expect.objectContaining({
+      modelId, width, height, quality: "max",
+      parameters: { imageModelFamily: "auto", output_format: "jpeg", background: "auto", output_compression: 90 },
+      referenceImages: [],
+    }));
+    expect(await service.get(owner.userId, created.id)).toMatchObject({ modelId, width, height, quality: "max", status: "succeeded" });
+  }, 15_000);
+
   it.each(["xhigh", "max"] as const)("snapshots GPT Image 2.5 %s quality and effective output parameters for the worker", async (quality) => {
     const owner = await sessionFor(`generation-25-${quality}`);
     const modelId = quality === "xhigh" ? "gpt-image-2.5-sunburst" : "gpt-image-2.5-flare";

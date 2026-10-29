@@ -36,6 +36,13 @@ const qualityOptions = [
   { id: "max", label: "最高", detail: "最高质量" },
 ] as const;
 
+const capabilitySourceLabels = {
+  official: "官方 Model ID 自动识别",
+  declared: "用户在设置中声明",
+  provider_alias: "供应商兼容别名（未验证）",
+  unknown: "未识别（保守兼容）",
+} as const;
+
 function statusLabel(job: GenerationJob) {
   if (job.status === "preparing") return "正在保存参考图";
   if (job.status === "queued") return "已进入生成队列";
@@ -139,13 +146,16 @@ export function ImageHubWorkbench() {
   const [optimizationUndo, setOptimizationUndo] = useState<{ before: string; after: string } | null>(null);
   const { width, height } = explicitSize ?? imageSizeFor(aspectRatio, resolution);
   const selectedModel = models.find((model) => model.modelProfileId === (modelProfileId || defaultModelProfileId));
-  const capabilities = useMemo(() => {
-    try { return getImageModelCapabilities(selectedModel?.modelId ?? "gpt-image-2", selectedModel?.defaultParameters); }
-    catch { return getImageModelCapabilities("unknown"); }
+  const { capabilities, error: capabilityError } = useMemo(() => {
+    try {
+      return { capabilities: getImageModelCapabilities(selectedModel?.modelId ?? "gpt-image-2", selectedModel?.defaultParameters), error: "" };
+    } catch (error) {
+      return { capabilities: getImageModelCapabilities("unknown"), error: error instanceof Error ? error.message : "生图模型能力配置无效，请在模型设置中重新选择接口兼容类型" };
+    }
   }, [selectedModel]);
   const appliedMask = mask && mask.source === references[0] && !characterProfileId && capabilities.supportsMask ? mask.file : null;
-  let settingsError = modelsLoaded && !selectedModel ? models.length ? "请选择本次任务使用的生图模型。" : "请先在 AI 设置中配置并启用生图模型。" : "";
-  if (selectedModel) {
+  let settingsError = capabilityError || (modelsLoaded && !selectedModel ? models.length ? "请选择本次任务使用的生图模型。" : "请先在 AI 设置中配置并启用生图模型。" : "");
+  if (selectedModel && !capabilityError) {
     try {
       validateImageGenerationSettings({
         modelId: selectedModel.modelId, parameters: selectedModel.defaultParameters,
@@ -665,7 +675,12 @@ export function ImageHubWorkbench() {
             setModelMessage("已切换本次任务模型并载入默认输出设置；请确认画布与质量。");
           }}><option value="">{loadingModels ? "正在加载模型…" : "使用设置中的默认模型"}</option>{models.map((model) => <option key={model.modelProfileId} value={model.modelProfileId}>{model.name}</option>)}</select></label>
           {modelMessage ? <p className="imagehub-option-note">{modelMessage} <Link href="/settings/ai">管理 AI 模型</Link></p> : null}
-          {selectedModel ? <p className="imagehub-option-note">{capabilities.label}{!capabilities.known ? <> · 供应商能力尚未验证，请按接口文档选择兼容系列。 <Link href="/settings/ai">调整兼容设置</Link></> : null}</p> : null}
+          {selectedModel ? <p className="imagehub-option-note" role="note" aria-label="当前模型能力">Model ID：<code style={{ overflowWrap: "anywhere" }}>{selectedModel.modelId}</code> · {capabilityError ? "能力配置无效" : capabilities.label} · 能力来源：{capabilityError ? "配置无效" : capabilitySourceLabels[capabilities.source]}</p> : null}
+          {selectedModel && !capabilityError && capabilities.source !== "official" ? <p className="imagehub-option-note">
+            {capabilities.source === "provider_alias" ? "该 Model ID 是供应商兼容别名，按 GPT Image 2.5 参数约定显示选项；这不代表供应商已通过能力验证。"
+              : capabilities.source === "declared" ? "手动声明优先于 Model ID 自动识别；兼容系列来自你的设置，不代表已验证供应商的实际能力。"
+                : "供应商型号尚未识别，请按接口文档确认兼容系列。"} <Link href="/settings/ai">调整兼容设置</Link>
+          </p> : null}
           <label className="field"><span>作品标题（保存笔记时使用）</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={200} placeholder="例如：冬夜灯塔实验" /></label>
           <label className="field"><span>Prompt</span><textarea id="imagehub-prompt" aria-label="Prompt" className="imagehub-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={MAX_IMAGE_GENERATION_PROMPT_LENGTH} required placeholder="描述主体、构图、环境、光线、镜头与材质……" /></label>
           <div className="imagehub-inline-actions">
@@ -677,14 +692,17 @@ export function ImageHubWorkbench() {
           </div>
           <label className="field"><span>负面提示词</span><textarea aria-label="负面提示词" value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} maxLength={20_000} placeholder="watermark, blurry, malformed hands…" /></label>
 
-          {capabilities.supportsCustomSize ? <><fieldset className="imagehub-options"><legend>画布比例</legend><div className="imagehub-segments imagehub-segments--ratios">{imageAspectRatios.map((ratio) => <button aria-pressed={!explicitSize && aspectRatio === ratio.id} key={ratio.id} type="button" onClick={() => { setAspectRatio(ratio.id); setExplicitSize(null); }}><strong>{ratio.label}</strong><small>{ratio.id}</small></button>)}</div></fieldset>
-          <fieldset className="imagehub-options"><legend>输出尺寸</legend><div className="imagehub-segments imagehub-segments--resolutions">{imageResolutionTiers.map((tier) => {
+          {capabilityError ? <fieldset className="imagehub-options"><legend>输出分辨率</legend><p className="imagehub-option-note">能力配置无效，修正兼容系列后才能选择输出尺寸。</p></fieldset> : capabilities.supportsCustomSize ? <><fieldset className="imagehub-options"><legend>画布比例</legend><div className="imagehub-segments imagehub-segments--ratios">{imageAspectRatios.map((ratio) => <button aria-pressed={!explicitSize && aspectRatio === ratio.id} key={ratio.id} type="button" onClick={() => { setAspectRatio(ratio.id); setExplicitSize(null); }}><strong>{ratio.label}</strong><small>{ratio.id}</small></button>)}</div></fieldset>
+          <fieldset className="imagehub-options"><legend>输出分辨率</legend><div className="imagehub-segments imagehub-segments--resolutions">{imageResolutionTiers.map((tier) => {
             const size = imageSizeFor(aspectRatio, tier.id);
             return <button aria-pressed={!explicitSize && resolution === tier.id} key={tier.id} type="button" onClick={() => { setResolution(tier.id); setExplicitSize(null); }}><strong>{tier.label}</strong><small>{size.width}×{size.height} · {tier.detail}</small></button>;
-          })}</div>{explicitSize ? <p className="imagehub-option-note">当前画布 {width}×{height}，可点击比例或尺寸重新选择。</p> : resolution === "4k" ? <p className="imagehub-option-note">4K/最大画布仍属供应商实验能力，生成时间和费用通常会增加；渲染质量可独立选择。</p> : null}</fieldset></> : <fieldset className="imagehub-options"><legend>该模型可用尺寸</legend><div className="imagehub-segments">{capabilities.sizes.map((size) => {
+          })}</div>{explicitSize ? <p className="imagehub-option-note">当前画布 {width}×{height}，可点击比例或尺寸重新选择。</p> : null}
+          <p className="imagehub-option-note">分辨率档位与渲染质量独立。4K/最大画布受总像素和画布比例限制；方图最大为 2880×2880，并非 4096×4096，请以按钮显示的实际像素为准。</p>
+          {width * height > 3_686_400 ? <p className="imagehub-option-note">当前画布 {width}×{height}（{(width * height).toLocaleString()} 像素）超过 3,686,400 像素，属于实验性尺寸；生成时间和费用通常会增加。</p> : null}
+          </fieldset></> : <fieldset className="imagehub-options"><legend>输出分辨率</legend><div className="imagehub-segments">{capabilities.sizes.map((size) => {
             const [sizeWidth, sizeHeight] = size.split("x").map(Number);
             return <button key={size} type="button" aria-pressed={width === sizeWidth && height === sizeHeight} onClick={() => setExplicitSize({ width: sizeWidth, height: sizeHeight })}><strong>{sizeWidth === sizeHeight ? "方形" : sizeWidth > sizeHeight ? "横版" : "竖版"}</strong><small>{sizeWidth}×{sizeHeight}</small></button>;
-          })}</div><p className="imagehub-option-note">当前型号使用固定尺寸，不会自动缩小或改变你的画布。</p></fieldset>}
+          })}</div><p className="imagehub-option-note">{capabilities.source === "unknown" ? "尺寸能力尚未识别，暂提供保守兼容尺寸；这不代表供应商仅支持这些尺寸，请在设置中确认兼容系列。" : "当前兼容系列使用列出的固定尺寸，不会自动缩小或改变你的画布。"}</p></fieldset>}
           <div className="imagehub-settings-row">
             <fieldset><legend>渲染质量</legend><div className={`imagehub-choice${capabilities.qualities.length > 4 ? " imagehub-choice--extended" : ""}`}>{qualityOptions.filter((option) => capabilities.qualities.includes(option.id)).map((option) => <button aria-pressed={quality === option.id} key={option.id} type="button" onClick={() => setQuality(option.id)}><strong>{option.label}</strong><small>{option.detail}</small></button>)}</div></fieldset>
             <label><span>张数</span><select value={imageCount} onChange={(event) => setImageCount(Number(event.target.value))}>{[1, 2, 3, 4].filter((count) => count <= capabilities.maxImageCount).map((count) => <option key={count} value={count}>{count} 张</option>)}</select></label>
@@ -733,7 +751,7 @@ export function ImageHubWorkbench() {
             {appliedMask ? <div className="imagehub-mask-status"><span>已设置局部修改区域 · 透明区域会被重绘</span><button type="button" onClick={() => setMask(null)}>清除修改区域</button></div> : null}
             {capabilities.supportsMask && characterProfileId ? <p className="imagehub-option-note">局部涂抹编辑使用第一张上传参考图；请先清除 AI Model 角色选择。</p> : null}
           </div>
-          {settingsError ? <p className="imagehub-message" role="alert">{settingsError}</p> : null}
+          {settingsError ? <p className="imagehub-message" role="alert">{settingsError}{capabilityError ? <> <Link href="/settings/ai">修正能力配置</Link></> : null}</p> : null}
           {message ? <p className="imagehub-message" role="status">{message}</p> : null}
           <button className="imagehub-generate" disabled={submitting || loadingModels || Boolean(settingsError)} type="submit"><span>{submitting ? "正在建立任务…" : loadingModels ? "正在加载模型…" : "开始生成"}</span><small>{width} × {height} · {imageCount} 张</small></button>
         </form>
