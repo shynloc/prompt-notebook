@@ -24,7 +24,29 @@ describe("image model capabilities", () => {
     const result = validateImageGenerationSettings({ ...settings, modelId });
     expect(result.size).toBe("3840x2160");
     expect(result.quality).toBe("max");
-    expect(result.capabilities).toMatchObject({ profileId: "gpt-image-2.5", known: true, transparency: true });
+    expect(result.capabilities).toMatchObject({ profileId: "gpt-image-2.5", known: true, source: "official", transparency: true });
+  });
+
+  it.each(["gpt-image-2.5", "  GPT-IMAGE-2.5  "])("supports the explicit provider alias %s without claiming an official model ID", (modelId) => {
+    const result = validateImageGenerationSettings({ ...settings, modelId });
+    expect(result.size).toBe("3840x2160");
+    expect(result.capabilities).toMatchObject({ profileId: "gpt-image-2.5", supportsCustomSize: true, known: false, source: "provider_alias" });
+    expect(result.capabilities.label).toContain("供应商兼容别名");
+  });
+
+  it.each(["vendor/gpt-image-2.5", "gpt-image-2.5-custom", "gpt-image-2.5-2026-09-08", "gpt-image-2.50"])("does not expand unverified aliases such as %s", (modelId) => {
+    const capabilities = getImageModelCapabilities(modelId);
+    expect(capabilities).toMatchObject({ profileId: "unknown", known: false, source: "unknown", supportsCustomSize: false });
+    expect(() => validateImageGenerationSettings({ ...settings, modelId })).toThrow(/不支持/);
+  });
+
+  it("keeps explicit declarations ahead of provider-alias and official automatic detection", () => {
+    for (const modelId of ["gpt-image-2.5", "gpt-image-2.5-sunburst", "gpt-image-2"]) {
+      const capabilities = getImageModelCapabilities(modelId, { imageModelFamily: "gpt-image-1" });
+      expect(capabilities).toMatchObject({ profileId: "gpt-image-1", source: "declared", supportsCustomSize: false });
+    }
+    expect(getImageModelCapabilities("gpt-image-2.5", { imageModelFamily: "auto" }).source).toBe("provider_alias");
+    expect(getImageModelCapabilities("gpt-image-2.5", { imageModelFamily: "custom" })).toMatchObject({ profileId: "custom", source: "declared", known: false });
   });
 
   it("requires an explicit family for vendor aliases instead of guessing prefixes", () => {

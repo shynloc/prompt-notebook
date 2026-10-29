@@ -14,10 +14,12 @@ export const IMAGE_MODEL_FAMILIES = [
 ] as const;
 export type ImageModelFamily = (typeof IMAGE_MODEL_FAMILIES)[number];
 export type ImageModelProfile = Exclude<ImageModelFamily, "auto"> | "unknown";
+export type ImageModelCapabilitySource = "official" | "declared" | "provider_alias" | "unknown";
 export const MAX_IMAGE_GENERATION_PROMPT_LENGTH = 32_000;
 
 export interface ImageModelCapabilities {
   profileId: ImageModelProfile;
+  source: ImageModelCapabilitySource;
   label: string;
   known: boolean;
   supportsCustomSize: boolean;
@@ -37,7 +39,7 @@ type Parameters = Record<string, string | number | boolean>;
 const standardSizes = ["1024x1024", "1536x1024", "1024x1536"];
 const standardQualities: ImageGenerationQuality[] = ["auto", "low", "medium", "high"];
 
-/** Model IDs are exact contracts. A vendor alias needs an explicit family declaration. */
+/** Recognize exact contracts and explicitly listed supplier aliases; never guess vendor prefixes. */
 export function getImageModelCapabilities(modelId: string, parameters: Parameters = {}): ImageModelCapabilities {
   const declared = parameters.imageModelFamily;
   if (declared !== undefined && !IMAGE_MODEL_FAMILIES.includes(declared as ImageModelFamily)) {
@@ -45,12 +47,25 @@ export function getImageModelCapabilities(modelId: string, parameters: Parameter
   }
   const id = modelId.trim().toLowerCase();
   let profileId: ImageModelProfile;
-  if (declared && declared !== "auto") profileId = declared as Exclude<ImageModelFamily, "auto">;
+  let source: ImageModelCapabilitySource = "official";
+  if (declared && declared !== "auto") {
+    profileId = declared as Exclude<ImageModelFamily, "auto">;
+    source = "declared";
+  }
+  else if (id === "gpt-image-2.5") {
+    // Handle this exact supplier alias with the 2.5 request contract. It is not an
+    // official model ID and must still be sent to the supplier unchanged.
+    profileId = "gpt-image-2.5";
+    source = "provider_alias";
+  }
   else if (/^gpt-image-2\.5-(?:sunburst|flare)(?:-\d{4}-\d{2}-\d{2})?$/.test(id)) profileId = "gpt-image-2.5";
   else if (/^gpt-image-2(?:-\d{4}-\d{2}-\d{2})?$/.test(id)) profileId = "gpt-image-2";
   else if (/^gpt-image-1(?:\.5|-mini)?(?:-\d{4}-\d{2}-\d{2})?$/.test(id)) profileId = "gpt-image-1";
   else if (id === "dall-e-3") profileId = "dall-e-3";
-  else profileId = "unknown";
+  else {
+    profileId = "unknown";
+    source = "unknown";
+  }
   const native = ["gpt-image-2.5", "gpt-image-2", "custom"].includes(profileId);
   const extended = profileId === "gpt-image-2.5" || profileId === "custom";
   const gpt = profileId.startsWith("gpt-image-");
@@ -59,7 +74,8 @@ export function getImageModelCapabilities(modelId: string, parameters: Parameter
   const supportsReferences = profileId !== "dall-e-3";
   return {
     profileId,
-    label: ({
+    source,
+    label: source === "provider_alias" ? "GPT Image 2.5（供应商兼容别名）" : ({
       "gpt-image-2.5": "GPT Image 2.5",
       "gpt-image-2": "GPT Image 2",
       "gpt-image-1": "GPT Image 1 / 1.5",
@@ -67,7 +83,7 @@ export function getImageModelCapabilities(modelId: string, parameters: Parameter
       custom: "自定义兼容能力（用户声明）",
       unknown: "通用兼容模式（尚未验证）",
     })[profileId],
-    known: profileId !== "custom" && profileId !== "unknown",
+    known: source !== "provider_alias" && profileId !== "custom" && profileId !== "unknown",
     supportsCustomSize: native,
     sizes: native ? [] : profileId === "dall-e-3" ? ["1024x1024", "1792x1024", "1024x1792"] : [...standardSizes],
     qualities: extended ? [...IMAGE_GENERATION_QUALITIES] : [...standardQualities],

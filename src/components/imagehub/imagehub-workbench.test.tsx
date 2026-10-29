@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ImageHubWorkbench } from "./imagehub-workbench";
@@ -44,12 +44,108 @@ function job(status: GenerationJob["status"]): GenerationJob {
   };
 }
 
+function mockConfiguredImageModel(modelId: string, defaultParameters: Record<string, string | number | boolean> = {}) {
+  const profileId = "33333333-3333-4333-8333-333333333333";
+  const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url === "/api/v1/ai/configurations") return Response.json({ data: [{
+      enabled: true, modelEnabled: true, modelProfileId: profileId, modelId,
+      name: "Studio", displayName: "Image model", capabilities: ["image_generation"], defaultParameters,
+    }] });
+    if (url === "/api/v1/ai/preferences") return Response.json({ data: [{ purpose: "image_generation", modelProfileId: profileId }] });
+    if (url.includes("/api/v1/generations?")) return Response.json({ data: [] });
+    if (url === "/api/v1/generations" && init?.method === "POST") return Response.json({ data: job("queued") }, { status: 201 });
+    throw new Error(`Unexpected request ${url}`);
+  });
+  return { profileId, fetcher };
+}
+
 beforeEach(() => {
   sessionStorage.clear();
   vi.restoreAllMocks();
 });
 
 describe("AI ImageHub workbench", () => {
+  it("loads the exact 2.5 alias with automatic family detection and offers three resolution tiers independent of six quality choices", async () => {
+    const { profileId, fetcher } = mockConfiguredImageModel("gpt-image-2.5", { imageModelFamily: "auto" });
+    render(<ImageHubWorkbench />);
+    await waitFor(() => expect(screen.getByLabelText("本次生图模型")).toHaveValue(profileId));
+    expect(screen.getByLabelText("当前模型能力")).toHaveTextContent("Model ID：gpt-image-2.5");
+    expect(screen.getByLabelText("当前模型能力")).toHaveTextContent("能力来源：供应商兼容别名（未验证）");
+    expect(screen.getByText(/这不代表供应商已通过能力验证/)).toBeVisible();
+    const resolutions = screen.getByRole("group", { name: "输出分辨率" });
+    expect(within(resolutions).getAllByRole("button")).toHaveLength(3);
+    expect(within(resolutions).getByRole("button", { name: /^1K.*1024×1024/ })).toHaveAttribute("aria-pressed", "true");
+    const qualities = screen.getByRole("group", { name: "渲染质量" });
+    expect(within(qualities).getAllByRole("button")).toHaveLength(6);
+    fireEvent.click(within(qualities).getByRole("button", { name: /^精细\s*质量优先$/ }));
+    fireEvent.click(within(resolutions).getByRole("button", { name: /^2K.*2048×2048/ }));
+    expect(within(qualities).getByRole("button", { name: /^精细\s*质量优先$/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(resolutions).getByRole("button", { name: /^4K.*2880×2880/ }));
+    expect(within(qualities).getByRole("button", { name: /^精细\s*质量优先$/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/方图最大为 2880×2880，并非 4096×4096/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /宽屏.*16:9/ }));
+    expect(within(resolutions).getByRole("button", { name: /^4K.*3840×2160/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "An architectural poster at native wide resolution" } });
+    fireEvent.click(screen.getByRole("button", { name: /开始生成/ }));
+    await screen.findByText("已进入生成队列");
+    const call = fetcher.mock.calls.find(([url, init]) => String(url) === "/api/v1/generations" && init?.method === "POST");
+    const payload = JSON.parse(String((call?.[1]?.body as FormData).get("payload")));
+    expect(payload).toMatchObject({ modelProfileId: profileId, width: 3840, height: 2160, quality: "high" });
+    expect(fetcher.mock.calls.some(([url, init]) => String(url) === "/api/v1/ai/preferences" && init?.method === "PATCH")).toBe(false);
+  });
+
+  it("warns about experimental pixel count for a 2K square but not a smaller 2K widescreen canvas", async () => {
+    const { profileId } = mockConfiguredImageModel("gpt-image-2");
+    render(<ImageHubWorkbench />);
+    await waitFor(() => expect(screen.getByLabelText("本次生图模型")).toHaveValue(profileId));
+    expect(screen.getByLabelText("当前模型能力")).toHaveTextContent("能力来源：官方 Model ID 自动识别");
+    expect(screen.queryByText(/超过 3,686,400 像素/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^2K/ }));
+    expect(screen.getByText(/当前画布 2048×2048.*超过 3,686,400 像素/)).toHaveTextContent("实验性尺寸");
+    fireEvent.click(screen.getByRole("button", { name: /宽屏.*16:9/ }));
+    expect(screen.queryByText(/超过 3,686,400 像素/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^4K/ }));
+    expect(screen.getByText(/当前画布 3840×2160.*超过 3,686,400 像素/)).toBeVisible();
+  });
+
+  it("explains conservative sizes for an unknown alias without claiming the supplier only supports those sizes", async () => {
+    const { profileId } = mockConfiguredImageModel("vendor/gpt-image-2.5");
+    render(<ImageHubWorkbench />);
+    await waitFor(() => expect(screen.getByLabelText("本次生图模型")).toHaveValue(profileId));
+    expect(screen.getByLabelText("当前模型能力")).toHaveTextContent("能力来源：未识别（保守兼容）");
+    const resolutions = screen.getByRole("group", { name: "输出分辨率" });
+    expect(within(resolutions).getByText(/尺寸能力尚未识别/)).toHaveTextContent("不代表供应商仅支持这些尺寸");
+    expect(within(resolutions).getAllByRole("button")).toHaveLength(3);
+    expect(screen.queryByRole("button", { name: /^4K/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/当前型号使用固定尺寸/)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "调整兼容设置" })).toHaveAttribute("href", "/settings/ai");
+  });
+
+  it("respects an explicitly declared legacy family even when the model ID is the 2.5 alias", async () => {
+    const { profileId } = mockConfiguredImageModel("gpt-image-2.5", { imageModelFamily: "gpt-image-1" });
+    render(<ImageHubWorkbench />);
+    await waitFor(() => expect(screen.getByLabelText("本次生图模型")).toHaveValue(profileId));
+    expect(screen.getByLabelText("当前模型能力")).toHaveTextContent("GPT Image 1 / 1.5");
+    expect(screen.getByLabelText("当前模型能力")).toHaveTextContent("能力来源：用户在设置中声明");
+    expect(screen.getByText(/手动声明优先于 Model ID 自动识别/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: /^4K/ })).not.toBeInTheDocument();
+    const resolutions = screen.getByRole("group", { name: "输出分辨率" });
+    expect(within(resolutions).getByRole("button", { name: /横版.*1536×1024/ })).toBeVisible();
+    expect(within(screen.getByRole("group", { name: "渲染质量" })).getAllByRole("button")).toHaveLength(4);
+  });
+
+  it("shows a fixable invalid capability configuration instead of presenting a normal fixed-size model", async () => {
+    const { profileId } = mockConfiguredImageModel("gpt-image-2.5", { imageModelFamily: "gpt_image_2_5" });
+    render(<ImageHubWorkbench />);
+    await waitFor(() => expect(screen.getByLabelText("本次生图模型")).toHaveValue(profileId));
+    expect(screen.getByRole("alert")).toHaveTextContent("生图模型能力配置无效");
+    expect(screen.getByRole("link", { name: "修正能力配置" })).toHaveAttribute("href", "/settings/ai");
+    expect(screen.getByLabelText("当前模型能力")).toHaveTextContent("能力来源：配置无效");
+    expect(within(screen.getByRole("group", { name: "输出分辨率" })).queryAllByRole("button")).toHaveLength(0);
+    expect(screen.getByRole("button", { name: /开始生成/ })).toBeDisabled();
+  });
+
   it("loads the preferred model and submits 2.5 native size and quality without changing preferences", async () => {
     const profileId = "33333333-3333-4333-8333-333333333333";
     const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {

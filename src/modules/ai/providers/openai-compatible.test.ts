@@ -65,6 +65,24 @@ describe("OpenAI-compatible provider adapter", () => {
     expect(body).not.toHaveProperty("imageModelFamily");
   });
 
+  it.each([[3840, 2160], [2160, 3840]])("preserves a bare provider alias and its %ix%i image request", async (width, height) => {
+    const fetcher = vi.fn(async (requestInput: RequestInfo | URL, requestInit?: RequestInit) => {
+      void requestInput;
+      void requestInit;
+      return Response.json({ data: [{ b64_json: "iVBORw0KGgo=" }] });
+    });
+    const adapter = new OpenAiCompatibleAdapter({ fetcher: fetcher as typeof fetch, resolver });
+    await adapter.generateImages({
+      baseUrl: "https://api.example.com/v1", apiKey: "mock-test-key", modelId: "gpt-image-2.5", prompt: "A city skyline",
+      width, height, quality: "high", imageCount: 1, parameters: {}, referenceImages: [],
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(String(fetcher.mock.calls[0][0])).toBe("https://api.example.com/v1/images/generations");
+    const body = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+    expect(body).toMatchObject({ model: "gpt-image-2.5", size: `${width}x${height}`, quality: "high", output_format: "jpeg", output_compression: 90 });
+    expect(body).not.toHaveProperty("response_format");
+  });
+
   it("validates unsupported settings before sending a potentially billed request", async () => {
     const fetcher = vi.fn();
     const adapter = new OpenAiCompatibleAdapter({ fetcher: fetcher as typeof fetch, resolver });

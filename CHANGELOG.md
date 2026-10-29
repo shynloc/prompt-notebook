@@ -4,6 +4,19 @@ All notable changes use the Keep a Changelog structure. Versions follow Semantic
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-10-29
+
+### Fixed
+
+- Restored 1K/2K/4K controls for the exact `gpt-image-2.5` gateway shorthand, with an explicit unverified-provider-alias label rather than presenting it as an official model ID.
+- Kept frontend, API validation and provider requests on the same capability contract; original Model IDs and requested landscape/portrait 4K dimensions remain unchanged.
+- Distinguished automatic recognition, explicit compatibility declarations and unknown models, with actionable explanations for restricted or invalid settings.
+- Separated output resolution from rendering quality and applied experimental-canvas warnings by pixel count, including large square 2K output. Maximum square output remains bounded by the documented total-pixel limit.
+
+### Verification
+
+- Added capability, mocked-provider, component and desktop/mobile browser regressions for alias recognition and resolution submission. No paid generation or credential change is part of this patch.
+
 ## [1.9.0] - 2026-10-28
 
 ### Added
