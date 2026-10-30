@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { MAX_GENERATED_IMAGE_BYTES, MAX_IMAGE_BYTES } from "@/modules/media/image-limits";
 
 import { getImageModelCapabilities, validateImageGenerationSettings, validateImageModelSize } from "../image-capabilities";
+import { validateImageProviderContract } from "../image-provider-contract";
 
 import type { AddressResolver } from "@/modules/outbound/outbound-url-policy";
 import { validateOutboundBaseUrl } from "@/modules/outbound/outbound-url-policy";
@@ -295,6 +296,7 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
   }
 
   async generateImages(input: AiImageGenerationInput): Promise<AiImageGenerationResult> {
+    validateImageProviderContract(input);
     const settings = validateImageGenerationSettings(input);
     for (const image of [...input.referenceImages, ...(input.maskImage ? [input.maskImage] : [])]) {
       if (!image.data.length || image.data.length > MAX_IMAGE_BYTES || !["image/png", "image/jpeg", "image/webp"].includes(image.mimeType)) {

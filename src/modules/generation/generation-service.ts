@@ -13,6 +13,7 @@ import {
 } from "@/db/schema";
 import { ApiError } from "@/lib/api/errors";
 import { validateImageGenerationSettings } from "@/modules/ai/image-capabilities";
+import { validateImageProviderContract } from "@/modules/ai/image-provider-contract";
 import { selectModelById, selectPreferredModel } from "@/modules/ai/model-selection";
 import { NoteService } from "@/modules/notes/note-service";
 import { createNoteSchema } from "@/modules/notes/note-schema";
@@ -116,6 +117,7 @@ export class GenerationService {
       ...(input.outputCompression !== undefined ? { output_compression: input.outputCompression } : {}),
     };
     try {
+      validateImageProviderContract({ baseUrl: selected.baseUrl, modelId: selected.modelId, parameters });
       const effective = validateImageGenerationSettings({ ...input, modelId: selected.modelId, parameters, referenceImageCount: referenceImages.length + characterReferences.length, ...(maskImage ? { maskImage: { data: maskImage, mimeType: "image/png", filename: "mask.png" } } : {}) });
       // Freeze the effective defaults alongside the selected model for reproducibility.
       parameters.output_format = effective.outputFormat;
@@ -674,7 +676,9 @@ export class GenerationService {
       resultMetadata: job.resultMetadata,
       characterProfile: job.characterProfile,
     }, input));
-    return new NoteService().createIdempotent(userId, `generation-job:${jobId}`, note, { onConflict: "replay" });
+    // Keep the persisted key used by older ImageHub clients so both entry points
+    // replay the same note across upgrades, refreshes, and concurrent requests.
+    return new NoteService().createIdempotent(userId, `imagehub-note:${jobId}`, note, { onConflict: "replay" });
   }
 
   private async resolveModel(userId: string, modelProfileId?: string) {

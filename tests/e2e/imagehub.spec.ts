@@ -181,8 +181,21 @@ test("restores, polls, reverses, and saves an ImageHub generation on mobile", as
     headers: { "content-disposition": 'attachment; filename="prompt-notebook-result.png"' },
   }));
   await page.route("**/api/v1/ai/reverse-prompt", (route) => route.fulfill({ json: { data: reverseResultFixture() } }));
+  const noteSaves: Array<{ title: string; includeCharacter: boolean }> = [];
+  let legacyNoteSaves = 0;
+  let releaseNoteSave = () => {};
+  const pendingNoteSave = new Promise<void>((resolve) => { releaseNoteSave = resolve; });
+  await page.route(`**/api/v1/generations/${jobId}/note`, async (route) => {
+    if (route.request().method() !== "POST") { await route.fallback(); return; }
+    noteSaves.push(route.request().postDataJSON());
+    await pendingNoteSave;
+    await route.fulfill({ status: 201, json: { data: { id: "note-1", title: "Source note", prompt: succeeded.prompt }, meta: { replayed: false } } });
+  });
   await page.route("**/api/v1/notes", async (route) => {
-    if (route.request().method() === "POST") await route.fulfill({ status: 201, json: { data: { id: "note-1" }, meta: { replayed: false } } });
+    if (route.request().method() === "POST") {
+      legacyNoteSaves += 1;
+      await route.fulfill({ status: 500, json: { error: { message: "Unexpected legacy save endpoint" } } });
+    }
     else await route.fallback();
   });
   await page.route(`**/api/v1/notes/${sourceNoteId}`, async (route) => {
@@ -221,6 +234,13 @@ test("restores, polls, reverses, and saves an ImageHub generation on mobile", as
   await page.getByRole("button", { name: "设为封面" }).click();
   await expect(page.getByText("生成图已设为原笔记封面。")).toBeVisible();
   await page.getByRole("button", { name: "保存为笔记" }).click();
+  await expect(page.getByRole("button", { name: "保存中…" })).toBeDisabled();
+  await expect.poll(() => noteSaves.length).toBe(1);
+  await page.getByRole("button", { name: "保存中…" }).evaluate((button) => (button as HTMLButtonElement).click());
+  expect(noteSaves).toHaveLength(1);
+  expect(noteSaves[0]).toEqual({ title: "Source note", includeCharacter: true });
+  expect(legacyNoteSaves).toBe(0);
+  releaseNoteSave();
   await expect(page.getByText("已保存为新的提示词笔记。")).toBeVisible();
   await expect(page.getByRole("button", { name: "已保存" })).toBeDisabled();
   page.once("dialog", (dialog) => dialog.accept());
@@ -229,4 +249,37 @@ test("restores, polls, reverses, and saves an ImageHub generation on mobile", as
   await expect(page.getByText("生成完成")).not.toBeVisible();
   const dimensions = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
   expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.width);
+});
+
+test("saves a generation after explicitly removing an unavailable AI Model association", async ({ page }) => {
+  await signUp(page);
+  const characterJob = {
+    ...succeeded,
+    characterProfile: { id: "55555555-5555-4555-8555-555555555555", name: "Synthetic character", available: false, imageIds: ["synthetic-reference"] },
+  };
+  await page.route("**/api/v1/ai/configurations", (route) => route.fulfill({ json: { data: [] } }));
+  await page.route("**/api/v1/ai/preferences", (route) => route.fulfill({ json: { data: [] } }));
+  await page.route("**/api/v1/generations?**", (route) => route.fulfill({ json: { data: [characterJob] } }));
+  const attempts: Array<{ title: string; includeCharacter: boolean }> = [];
+  await page.route(`**/api/v1/generations/${jobId}/note`, async (route) => {
+    if (route.request().method() !== "POST") { await route.fallback(); return; }
+    attempts.push(route.request().postDataJSON());
+    if (attempts.length === 1) {
+      await route.fulfill({ status: 404, json: { error: { code: "CHARACTER_PROFILE_NOT_FOUND", message: "Character profile unavailable" } } });
+      return;
+    }
+    await route.fulfill({ status: 201, json: { data: { id: "note-without-character", prompt: characterJob.prompt }, meta: { replayed: false } } });
+  });
+  await page.goto("/imagehub");
+  await page.getByRole("button", { name: "保存为笔记" }).click();
+  await expect(page.getByText(/关联的 AI Model 已被移入回收站或删除/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "已保存", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "移除角色关联后保存" }).click();
+  await expect(page.getByText("已保存为新的提示词笔记。")).toBeVisible();
+  await expect(page.getByRole("button", { name: "已保存", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "移除角色关联后保存" })).toHaveCount(0);
+  expect(attempts).toEqual([
+    { title: "", includeCharacter: true },
+    { title: "", includeCharacter: false },
+  ]);
 });

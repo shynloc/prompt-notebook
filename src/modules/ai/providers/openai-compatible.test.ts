@@ -12,6 +12,129 @@ import { AiProviderError } from "../types";
 const resolver = async () => [{ address: "93.184.216.34", family: 4 }];
 
 describe("OpenAI-compatible provider adapter", () => {
+  it.each([
+    ["chatgpt-image-latest", false], ["chatgpt-image-latest", true],
+    ["gpt-image-1.5", false], ["gpt-image-1.5", true],
+    ["gpt-image-2-2026-04-21", false], ["gpt-image-2-2026-04-21", true],
+    ["gpt-image-2.5-flare-2026-09-08", false], ["gpt-image-2.5-flare-2026-09-08", true],
+  ] as const)("never sends legacy response_format to official model %s (references: %s)", async (modelId, withReference) => {
+    const fetcher = vi.fn(async (requestInput: RequestInfo | URL, requestInit?: RequestInit) => {
+      void requestInput;
+      void requestInit;
+      return Response.json({ data: [{ b64_json: "iVBORw0KGgo=" }] });
+    });
+    const adapter = new OpenAiCompatibleAdapter({ fetcher: fetcher as typeof fetch, resolver });
+    await adapter.generateImages({
+      baseUrl: "https://api.openai.com/v1", apiKey: "mock-official-key", modelId,
+      prompt: "A synthetic paper observatory", width: 1024, height: 1024, quality: "medium", imageCount: 1,
+      parameters: { response_format: "url", imageModelFamily: "auto", arbitrary: "never-forward" },
+      referenceImages: withReference ? [{ data: Buffer.from("reference"), filename: "reference.png", mimeType: "image/png" }] : [],
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0];
+    expect(String(url)).toBe(`https://api.openai.com/v1/images/${withReference ? "edits" : "generations"}`);
+    if (withReference) {
+      const body = Buffer.from(init?.body as Buffer).toString();
+      expect(body).toContain(`name="model"\r\n\r\n${modelId}`);
+      expect(body).not.toContain("response_format");
+      expect(body).not.toContain("imageModelFamily");
+      expect(body).not.toContain("arbitrary");
+    } else {
+      const body = JSON.parse(String(init?.body));
+      expect(body.model).toBe(modelId);
+      expect(body).not.toHaveProperty("response_format");
+      expect(body).not.toHaveProperty("imageModelFamily");
+      expect(body).not.toHaveProperty("arbitrary");
+      if (modelId === "chatgpt-image-latest") expect(body.output_format).toBe("jpeg");
+    }
+  });
+
+  it.each([
+    ["gpt-6.1-terra", false], ["gpt-6.1-terra", true],
+    ["future-image-model", false], ["future-image-model", true],
+    ["gpt-image-2.5", false], ["gpt-image-2.5", true],
+  ] as const)("rejects an unrecognized official Images model before sending (%s, references: %s)", async (modelId, withReference) => {
+    const fetcher = vi.fn();
+    const adapter = new OpenAiCompatibleAdapter({ fetcher: fetcher as typeof fetch, resolver });
+    await expect(adapter.generateImages({
+      baseUrl: "https://api.openai.com/v1", apiKey: "mock-official-key", modelId,
+      prompt: "A synthetic paper observatory", width: 1024, height: 1024, quality: "medium", imageCount: 1,
+      parameters: {},
+      referenceImages: withReference ? [{ data: Buffer.from("reference"), filename: "reference.png", mimeType: "image/png" }] : [],
+    })).rejects.toMatchObject({
+      code: "AI_PROVIDER_RESPONSE_INVALID", retryable: false,
+      message: expect.stringMatching(/OpenAI.*图片模型/),
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each(["gpt-image-2", "custom"])("preserves an explicit future contract without silently rewriting its Model ID (%s)", async (imageModelFamily) => {
+    const fetcher = vi.fn(async (requestInput: RequestInfo | URL, requestInit?: RequestInit) => {
+      void requestInput;
+      void requestInit;
+      return Response.json({ data: [{ b64_json: "iVBORw0KGgo=" }] });
+    });
+    const adapter = new OpenAiCompatibleAdapter({ fetcher: fetcher as typeof fetch, resolver });
+    await adapter.generateImages({
+      baseUrl: "https://api.openai.com/v1", apiKey: "mock-official-key", modelId: "future-image-model",
+      prompt: "A synthetic paper observatory", width: 1024, height: 1024, quality: "high", imageCount: 1,
+      parameters: { imageModelFamily, response_format: "url" }, referenceImages: [],
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({ model: "future-image-model", output_format: "jpeg" });
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).not.toHaveProperty("response_format");
+  });
+
+  it.each([false, true])("does not guess a legacy contract for an unknown third-party model (references: %s)", async (withReference) => {
+    const fetcher = vi.fn(async (requestInput: RequestInfo | URL, requestInit?: RequestInit) => {
+      void requestInput;
+      void requestInit;
+      return Response.json({ data: [{ b64_json: "iVBORw0KGgo=" }] });
+    });
+    const adapter = new OpenAiCompatibleAdapter({ fetcher: fetcher as typeof fetch, resolver });
+    await adapter.generateImages({
+      baseUrl: "https://api.example.com/v1", apiKey: "mock-third-party-key", modelId: "gateway-unknown",
+      prompt: "A synthetic paper observatory", width: 1024, height: 1024, quality: "medium", imageCount: 1,
+      parameters: { response_format: "url" },
+      referenceImages: withReference ? [{ data: Buffer.from("reference"), filename: "reference.png", mimeType: "image/png" }] : [],
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(String(fetcher.mock.calls[0][1]?.body)).not.toContain("response_format");
+  });
+
+  it.each(["gpt-image-2", "future-image-model", "dall-e-3"])("rejects an official legacy protocol declaration before billing (%s)", async (modelId) => {
+    const fetcher = vi.fn();
+    const adapter = new OpenAiCompatibleAdapter({ fetcher: fetcher as typeof fetch, resolver });
+    await expect(adapter.generateImages({
+      baseUrl: "https://api.openai.com/v1", apiKey: "mock-official-key", modelId,
+      prompt: "A synthetic paper observatory", width: 1024, height: 1024, quality: "high", imageCount: 1,
+      parameters: { imageModelFamily: "dall-e-3" }, referenceImages: [],
+    })).rejects.toMatchObject({
+      code: "AI_PROVIDER_RESPONSE_INVALID", retryable: false,
+      message: expect.stringMatching(/OpenAI.*DALL/),
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("retains an explicitly selected legacy contract for third-party gateways", async () => {
+    const fetcher = vi.fn(async (requestInput: RequestInfo | URL, requestInit?: RequestInit) => {
+      void requestInput;
+      void requestInit;
+      return Response.json({ data: [{ b64_json: "iVBORw0KGgo=" }] });
+    });
+    const adapter = new OpenAiCompatibleAdapter({ fetcher: fetcher as typeof fetch, resolver });
+    await adapter.generateImages({
+      baseUrl: "https://api.example.com/v1", apiKey: "mock-third-party-key", modelId: "gateway-legacy-alias",
+      prompt: "A synthetic paper observatory", width: 1024, height: 1024, quality: "high", imageCount: 1,
+      parameters: { imageModelFamily: "dall-e-3", response_format: "url" }, referenceImages: [],
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
+      model: "gateway-legacy-alias", prompt: "A synthetic paper observatory", size: "1024x1024",
+      quality: "hd", n: 1, response_format: "b64_json",
+    });
+  });
+
   it("reconstructs a prompt from an inline image without exposing the API key", async () => {
     const fetcher = vi.fn(async (_requestInput: RequestInfo | URL, requestInit?: RequestInit) => {
       const body = JSON.parse(String(requestInit?.body));
