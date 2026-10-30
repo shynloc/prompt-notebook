@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 
-import { parseOutboundBaseUrl } from "@/modules/ai/outbound-url-policy";
-import { secureOutboundFetch } from "@/modules/ai/secure-outbound-fetch";
+import { parseOutboundBaseUrl } from "@/modules/outbound/outbound-url-policy";
+import { secureOutboundFetch } from "@/modules/outbound/secure-outbound-fetch";
 
 import type { StorageProvider, StoredImage } from "../storage-provider";
 

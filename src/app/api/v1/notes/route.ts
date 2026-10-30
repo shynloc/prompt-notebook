@@ -43,7 +43,10 @@ export async function POST(request: Request) {
     const input = createNoteSchema.parse(await request.json());
     const keyHeader = request.headers.get("idempotency-key");
     if (!keyHeader) return dataResponse(await notes.create(session.user.id, input), { status: 201 });
-    const result = await notes.createIdempotent(session.user.id, idempotencyKeySchema.parse(keyHeader), input);
+    const key = idempotencyKeySchema.parse(keyHeader);
+    const result = await notes.createIdempotent(session.user.id, key, input, {
+      onConflict: key.startsWith("imagehub-note:") ? "replay" : "reject",
+    });
     return dataResponse(result.note, { status: result.replayed ? 200 : 201 }, { replayed: result.replayed });
   } catch (error) {
     return errorResponse(error);

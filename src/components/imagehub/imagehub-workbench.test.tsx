@@ -384,7 +384,7 @@ describe("AI ImageHub workbench", () => {
         ...job("succeeded"), modelId: "gpt-image-2.5-flare", providerType: "openai_compatible",
         parameters: { outputFormat: "png", background: "transparent" }, resultMetadata: { usage: { total_tokens: 1200 } },
       }] });
-      if (url === "/api/v1/notes" && init?.method === "POST") return pendingSave;
+      if (url === `/api/v1/generations/${resultAsset.jobId}/note` && init?.method === "POST") return pendingSave;
       throw new Error(`Unexpected request: ${url}`);
     });
 
@@ -394,18 +394,13 @@ describe("AI ImageHub workbench", () => {
     fireEvent.click(save);
     fireEvent.click(save);
     expect(screen.getByRole("button", { name: "保存中…" })).toBeDisabled();
-    expect(fetcher.mock.calls.filter(([url]) => String(url) === "/api/v1/notes")).toHaveLength(1);
+    expect(fetcher.mock.calls.filter(([url]) => String(url) === `/api/v1/generations/${resultAsset.jobId}/note`)).toHaveLength(1);
     releaseSave(Response.json({ data: { id: "note-1" }, meta: { replayed: false } }, { status: 201 }));
 
     await screen.findByText("已保存为新的提示词笔记。");
     expect(screen.getByRole("button", { name: "已保存" })).toBeDisabled();
-    const saveCall = fetcher.mock.calls.find(([url]) => String(url) === "/api/v1/notes");
-    expect(new Headers(saveCall?.[1]?.headers).get("idempotency-key")).toBe(`imagehub-note:${resultAsset.jobId}`);
-    expect(JSON.parse(String(saveCall?.[1]?.body)).parameters).toMatchObject({
-      modelId: "gpt-image-2.5-flare", providerType: "openai_compatible",
-      request: { outputFormat: "png", background: "transparent" }, result: { usage: { total_tokens: 1200 } },
-      actualImages: [{ width: 1024, height: 1024, mimeType: "image/png" }],
-    });
+    const saveCall = fetcher.mock.calls.find(([url]) => String(url) === `/api/v1/generations/${resultAsset.jobId}/note`);
+    expect(JSON.parse(String(saveCall?.[1]?.body))).toEqual({ title: "", includeCharacter: true });
   });
 
   it("offers an explicit retry without a stale AI Model association", async () => {
@@ -423,7 +418,7 @@ describe("AI ImageHub workbench", () => {
     const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
       if (url.includes("/api/v1/generations?") && !init?.method) return Response.json({ data: [characterJob] });
-      if (url === "/api/v1/notes" && init?.method === "POST") {
+      if (url === `/api/v1/generations/${resultAsset.jobId}/note` && init?.method === "POST") {
         noteAttempt += 1;
         if (noteAttempt === 1) {
           return Response.json({ error: { code: "CHARACTER_PROFILE_NOT_FOUND", message: "Character profile unavailable" } }, { status: 422 });
@@ -441,13 +436,10 @@ describe("AI ImageHub workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "移除角色关联后保存" }));
     await screen.findByText("已保存为新的提示词笔记。");
 
-    const noteCalls = fetcher.mock.calls.filter(([url]) => String(url) === "/api/v1/notes");
+    const noteCalls = fetcher.mock.calls.filter(([url]) => String(url) === `/api/v1/generations/${resultAsset.jobId}/note`);
     expect(noteCalls).toHaveLength(2);
-    expect(JSON.parse(String(noteCalls[0][1]?.body)).characterProfiles).toEqual([
-      { id: characterJob.characterProfile?.id, role: "primary", sortOrder: 0 },
-    ]);
-    expect(JSON.parse(String(noteCalls[1][1]?.body)).characterProfiles).toEqual([]);
-    expect(new Headers(noteCalls[0][1]?.headers).get("idempotency-key")).toBe(new Headers(noteCalls[1][1]?.headers).get("idempotency-key"));
+    expect(JSON.parse(String(noteCalls[0][1]?.body)).includeCharacter).toBe(true);
+    expect(JSON.parse(String(noteCalls[1][1]?.body)).includeCharacter).toBe(false);
     expect(screen.getByRole("button", { name: "已保存" })).toBeDisabled();
   });
 

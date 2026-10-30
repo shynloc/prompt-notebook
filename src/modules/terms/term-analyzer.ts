@@ -1,9 +1,12 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { db } from "@/db/client";
-import { aiModelPreferences, aiModelProfiles, aiProviderConnections, customTerms } from "@/db/schema";
+import { customTerms } from "@/db/schema";
 import { ApiError } from "@/lib/api/errors";
-import { decryptCredential } from "@/modules/ai/credential-crypto";
+import { decryptCredential } from "@/modules/credentials/credential-crypto";
+import { FixedWindowRateLimiter, type WindowRateLimiter } from "@/modules/ai/fixed-window-rate-limiter";
+import { selectPreferredModel } from "@/modules/ai/model-selection";
+import { providerApiError } from "@/modules/ai/provider-api-error";
 import { AiProviderRegistry } from "@/modules/ai/provider-registry";
 import { AiProviderError, type AiProviderType } from "@/modules/ai/types";
 import builtInTerms from "./built-in-terms.json";
@@ -26,83 +29,16 @@ Return at most 80 candidates. If nothing valuable exists, return {"candidates":[
 
 const JSON_REPAIR_INSTRUCTION = `Repair the supplied content into strict JSON matching exactly this shape: {"candidates":[{"category":"人物|姿势|服装|环境|构图|镜头|摄影|光线|色彩|氛围|风格|材质|设计|质量|视频|负面提示|其他","label":"string","value":"string","sourceExcerpt":"string","confidence":"high|medium|low"}]}. Preserve only the supplied candidates. Return JSON only.`;
 
-export interface TermAnalysisRateLimiter {
-  consume(userId: string): boolean;
-}
-
-export class FixedWindowTermAnalysisRateLimiter implements TermAnalysisRateLimiter {
-  private readonly windows = new Map<string, { count: number; startedAt: number }>();
-
-  constructor(
-    private readonly limit = ANALYSIS_LIMIT,
-    private readonly windowMs = ANALYSIS_WINDOW_MS,
-    private readonly now = () => Date.now(),
-  ) {}
-
-  consume(userId: string) {
-    const currentTime = this.now();
-    const current = this.windows.get(userId);
-    if (!current || currentTime - current.startedAt >= this.windowMs) {
-      this.windows.set(userId, { count: 1, startedAt: currentTime });
-      return true;
-    }
-    if (current.count >= this.limit) return false;
-    current.count += 1;
-    return true;
-  }
-}
-
-const defaultRateLimiter = new FixedWindowTermAnalysisRateLimiter();
-
-function providerApiError(error: AiProviderError) {
-  const status = error.code === "AI_PROVIDER_RATE_LIMITED"
-    ? 429
-    : error.code === "AI_PROVIDER_TIMEOUT"
-      ? 504
-      : error.code === "AI_PROVIDER_AUTH_FAILED" || error.code === "AI_PROVIDER_QUOTA_EXCEEDED"
-        ? 422
-        : 502;
-  return new ApiError(status, error.code, error.message);
-}
+const defaultRateLimiter = new FixedWindowRateLimiter(ANALYSIS_LIMIT, ANALYSIS_WINDOW_MS);
 
 export class TermAnalyzer {
   constructor(
     private readonly providers = new AiProviderRegistry(),
-    private readonly rateLimiter: TermAnalysisRateLimiter = defaultRateLimiter,
+    private readonly rateLimiter: WindowRateLimiter = defaultRateLimiter,
   ) {}
 
   async analyze(userId: string, prompt: string, signal?: AbortSignal) {
-    const [selection] = await db.select({
-      purpose: aiModelPreferences.purpose,
-      modelProfileId: aiModelProfiles.id,
-      modelId: aiModelProfiles.modelId,
-      displayName: aiModelProfiles.displayName,
-      capabilities: aiModelProfiles.capabilities,
-      defaultParameters: aiModelProfiles.defaultParameters,
-      modelEnabled: aiModelProfiles.enabled,
-      connectionId: aiProviderConnections.id,
-      providerType: aiProviderConnections.providerType,
-      baseUrl: aiProviderConnections.baseUrl,
-      encryptedSecret: aiProviderConnections.encryptedSecret,
-      secretIv: aiProviderConnections.secretIv,
-      secretAuthTag: aiProviderConnections.secretAuthTag,
-      secretKeyId: aiProviderConnections.secretKeyId,
-      connectionEnabled: aiProviderConnections.enabled,
-    }).from(aiModelPreferences)
-      .innerJoin(aiModelProfiles, and(
-        eq(aiModelProfiles.id, aiModelPreferences.modelProfileId),
-        eq(aiModelProfiles.userId, userId),
-      ))
-      .innerJoin(aiProviderConnections, and(
-        eq(aiProviderConnections.id, aiModelProfiles.connectionId),
-        eq(aiProviderConnections.userId, userId),
-      ))
-      .where(and(
-        eq(aiModelPreferences.userId, userId),
-        inArray(aiModelPreferences.purpose, ["term_analysis", "prompt_optimization"]),
-      ))
-      .orderBy(sql`case when ${aiModelPreferences.purpose} = 'term_analysis' then 0 else 1 end`)
-      .limit(1);
+    const selection = await selectPreferredModel(userId, ["term_analysis", "prompt_optimization"]);
 
     if (!selection) throw new ApiError(422, "AI_TERM_ANALYZER_NOT_CONFIGURED", "请先在设置中指定提示词优化或词库分析模型");
     if (!selection.connectionEnabled || !selection.modelEnabled) throw new ApiError(422, "AI_TERM_ANALYZER_DISABLED", "当前词库分析模型已停用");

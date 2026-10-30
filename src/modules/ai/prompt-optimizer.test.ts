@@ -2,12 +2,12 @@
 
 import { describe, expect, it } from "vitest";
 
-import { FixedWindowPromptOptimizationRateLimiter } from "./prompt-optimizer";
+import { FixedWindowRateLimiter } from "./fixed-window-rate-limiter";
 
 describe("prompt optimization rate limiter", () => {
   it("bounds requests per user and resets after the window", () => {
     let now = 1_000;
-    const limiter = new FixedWindowPromptOptimizationRateLimiter(2, 500, () => now);
+    const limiter = new FixedWindowRateLimiter(2, 500, () => now);
     expect(limiter.consume("user-a")).toBe(true);
     expect(limiter.consume("user-a")).toBe(true);
     expect(limiter.consume("user-a")).toBe(false);

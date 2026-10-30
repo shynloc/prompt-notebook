@@ -28,9 +28,10 @@ import {
   tags,
 } from "@/db/schema";
 import { ApiError } from "@/lib/api/errors";
-import { promptContentHash } from "@/modules/search/content-hash";
 import type { NoteCharacterAssociationInput } from "@/modules/characters/character-schema";
+import { promptContentHash } from "@/modules/search/content-hash";
 import type { CreateNoteInput, NoteImageInput, UpdateNoteInput } from "./note-schema";
+import { contentHashForRestoredNote } from "./note-version";
 
 export type PromptNote = typeof promptNotes.$inferSelect;
 export type PromptImage = typeof promptImages.$inferSelect;
@@ -85,6 +86,25 @@ function decodeCursor(value: string, sort: "updated" | "title"): Cursor | null {
   } catch {
     return null;
   }
+}
+
+const VERSION_LIMIT = 50;
+const restorableFields = ["title", "prompt", "negativePrompt", "model", "sourceUrl", "sourceTitle", "capturedAt", "captureMethod", "parameters", "favorite", "archivedAt"] as const;
+type NoteTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+function restoredFields(snapshot: Record<string, unknown>) {
+  const changes: Record<string, unknown> = {};
+  for (const field of restorableFields) if (field in snapshot) changes[field] = snapshot[field];
+  return changes;
+}
+
+async function recordVersion(tx: NoteTransaction, userId: string, noteId: string, current: PromptNote) {
+  await tx.insert(noteVersions).values({ noteId, userId, version: current.version, snapshot: current }).onConflictDoNothing();
+  await tx.execute(sql`delete from ${noteVersions} where ${noteVersions.id} in (
+    select ${noteVersions.id} from ${noteVersions}
+    where ${noteVersions.noteId} = ${noteId} and ${noteVersions.userId} = ${userId}
+    order by ${noteVersions.createdAt} desc offset ${VERSION_LIMIT}
+  )`);
 }
 
 function noteChanges(input: UpdateNoteInput) {
@@ -388,16 +408,38 @@ export class NoteRepository {
         )
         .returning();
       if (!row) return null;
-      await tx.insert(noteVersions).values({ noteId: id, userId, version: current.version, snapshot: current }).onConflictDoNothing();
-      await tx.execute(sql`delete from ${noteVersions} where ${noteVersions.id} in (
-        select ${noteVersions.id} from ${noteVersions}
-        where ${noteVersions.noteId} = ${id} and ${noteVersions.userId} = ${userId}
-        order by ${noteVersions.createdAt} desc offset 50
-      )`);
+      await recordVersion(tx, userId, id, current);
       await this.replaceRelations(tx, userId, id, input.tags, input.images, input.characterProfiles);
       return row;
     });
     return updated ? (await this.hydrate([updated]))[0] : null;
+  }
+
+  async restoreVersion(userId: string, noteId: string, versionId: string, expectedVersion: number) {
+    const result = await db.transaction(async (tx) => {
+      const [historical] = await tx.select().from(noteVersions)
+        .where(and(eq(noteVersions.id, versionId), eq(noteVersions.noteId, noteId), eq(noteVersions.userId, userId))).limit(1);
+      if (!historical) return { kind: "missing" as const };
+      const [current] = await tx.select().from(promptNotes)
+        .where(and(eq(promptNotes.id, noteId), eq(promptNotes.userId, userId), eq(promptNotes.version, expectedVersion), isNull(promptNotes.deletedAt))).limit(1);
+      if (!current) return { kind: "conflict" as const };
+      await recordVersion(tx, userId, noteId, current);
+      const [restored] = await tx.update(promptNotes).set({
+        ...restoredFields(historical.snapshot),
+        contentHash: contentHashForRestoredNote(historical.snapshot, current),
+        version: sql`${promptNotes.version} + 1`,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(promptNotes.id, noteId),
+        eq(promptNotes.userId, userId),
+        eq(promptNotes.version, expectedVersion),
+      )).returning();
+      if (!restored) return { kind: "conflict" as const };
+      return { kind: "restored" as const, note: restored };
+    });
+    if (result.kind === "missing") throw new ApiError(404, "VERSION_NOT_FOUND", "Version not found");
+    if (result.kind === "conflict") throw new ApiError(409, "VERSION_CONFLICT", "The note changed before restore");
+    return result.note;
   }
 
   async setDeleted(userId: string, id: string, version: number, deleted: boolean) {

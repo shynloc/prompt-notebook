@@ -9,8 +9,8 @@ import {
   decryptCredential,
   encryptCredential,
   type CredentialContext,
-} from "@/modules/ai/credential-crypto";
-import { parseOutboundBaseUrl } from "@/modules/ai/outbound-url-policy";
+} from "@/modules/credentials/credential-crypto";
+import { parseOutboundBaseUrl } from "@/modules/outbound/outbound-url-policy";
 
 import type { UpsertMediaStorageInput } from "./media-storage-schema";
 import { PicbedProvider } from "./providers/picbed";

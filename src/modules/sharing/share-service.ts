@@ -4,7 +4,7 @@ import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { noteShares, promptImages, promptNotes } from "@/db/schema";
 import { ApiError } from "@/lib/api/errors";
-import { decryptCredential, encryptCredential } from "@/modules/ai/credential-crypto";
+import { decryptCredential, encryptCredential } from "@/modules/credentials/credential-crypto";
 import { LocalMediaStore, localImageView, localMediaIdFromObjectKey } from "@/modules/media/local-media-store";
 
 const SHORT_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";

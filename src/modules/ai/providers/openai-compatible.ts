@@ -1,12 +1,12 @@
 import { randomBytes } from "node:crypto";
 
-import { MAX_GENERATED_IMAGE_BYTES, MAX_IMAGE_BYTES } from "@/modules/media/image-policy";
+import { MAX_GENERATED_IMAGE_BYTES, MAX_IMAGE_BYTES } from "@/modules/media/image-limits";
 
 import { getImageModelCapabilities, validateImageGenerationSettings, validateImageModelSize } from "../image-capabilities";
 
-import type { AddressResolver } from "../outbound-url-policy";
-import { validateOutboundBaseUrl } from "../outbound-url-policy";
-import { secureOutboundFetch } from "../secure-outbound-fetch";
+import type { AddressResolver } from "@/modules/outbound/outbound-url-policy";
+import { validateOutboundBaseUrl } from "@/modules/outbound/outbound-url-policy";
+import { secureOutboundFetch } from "@/modules/outbound/secure-outbound-fetch";
 import {
   AiProviderError,
   type AiConnectionInput,

@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { AddressResolver } from "@/modules/ai/outbound-url-policy";
+import type { AddressResolver } from "@/modules/outbound/outbound-url-policy";
 
 import {
   assertSafeRemoteUrl,

@@ -5,7 +5,7 @@ import { ApiError } from "@/lib/api/errors";
 import { requireSession } from "@/lib/auth/session";
 import { inspectImage, MAX_IMAGE_BYTES } from "@/modules/media/image-policy";
 import { ReversePromptService } from "@/modules/ai/reverse-prompt-service";
-import { secureOutboundFetch } from "@/modules/ai/secure-outbound-fetch";
+import { secureOutboundFetch } from "@/modules/outbound/secure-outbound-fetch";
 import { reverseOptionsSchema, type ReversePromptOptions } from "@/modules/ai/reverse-prompt-structure";
 import { localMediaIdFromUrl, readLocalMediaUrl } from "@/modules/media/local-media-store";
 

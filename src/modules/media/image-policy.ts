@@ -3,11 +3,12 @@ import sharp from "sharp";
 import {
   resolveRemoteResourceTarget,
   secureRemoteResourceFetch,
-} from "@/modules/ai/secure-outbound-fetch";
-import type { AddressResolver } from "@/modules/ai/outbound-url-policy";
+} from "@/modules/outbound/secure-outbound-fetch";
+import type { AddressResolver } from "@/modules/outbound/outbound-url-policy";
 
-export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-export const MAX_GENERATED_IMAGE_BYTES = 32 * 1024 * 1024;
+import { MAX_GENERATED_IMAGE_BYTES, MAX_IMAGE_BYTES } from "./image-limits";
+
+export { MAX_GENERATED_IMAGE_BYTES, MAX_IMAGE_BYTES };
 export const MAX_IMAGE_PIXELS = 40_000_000;
 const MAX_REDIRECTS = 4;
 const REQUEST_TIMEOUT_MS = 20_000;

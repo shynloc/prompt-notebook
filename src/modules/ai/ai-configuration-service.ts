@@ -20,8 +20,9 @@ import {
   decryptCredential,
   encryptCredential,
   type CredentialContext,
-} from "./credential-crypto";
-import { parseOutboundBaseUrl } from "./outbound-url-policy";
+} from "@/modules/credentials/credential-crypto";
+import { parseOutboundBaseUrl } from "@/modules/outbound/outbound-url-policy";
+import { providerApiError } from "./provider-api-error";
 import { AiProviderRegistry } from "./provider-registry";
 import { AI_PURPOSES, AiProviderError, capabilityForPurpose, type AiProviderType } from "./types";
 
@@ -38,17 +39,6 @@ function credentialContext(
 
 function normalizedBaseUrl(value: string) {
   return parseOutboundBaseUrl(value).toString();
-}
-
-function providerApiError(error: AiProviderError) {
-  const status = error.code === "AI_PROVIDER_RATE_LIMITED"
-    ? 429
-    : error.code === "AI_PROVIDER_TIMEOUT"
-      ? 504
-      : error.code === "AI_PROVIDER_AUTH_FAILED" || error.code === "AI_PROVIDER_QUOTA_EXCEEDED"
-        ? 422
-        : 502;
-  return new ApiError(status, error.code, error.message);
 }
 
 export class AiConfigurationService {

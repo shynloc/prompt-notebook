@@ -501,32 +501,10 @@ export function ImageHubWorkbench() {
     if (savedJobs.has(job.id) || !beginAction(key)) return;
     feedback(job.id, "正在保存为笔记…");
     try {
-      const images = job.assets.filter((asset) => asset.role === "result").map(noteImage);
-      const response = await fetch("/api/v1/notes", {
+      const response = await fetch(`/api/v1/generations/${job.id}/note`, {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "idempotency-key": `imagehub-note:${job.id}`,
-        },
-        body: JSON.stringify({
-          title: title.trim() || job.prompt.slice(0, 60),
-          prompt: job.prompt,
-          negativePrompt: job.negativePrompt,
-          model: job.modelName,
-          tags: ["AI 生成"],
-          images,
-          characterProfiles: !withoutCharacter && job.characterProfile ? [{ id: job.characterProfile.id, role: "primary", sortOrder: 0 }] : [],
-          parameters: {
-            generationJobId: job.id,
-            width: job.width, height: job.height, quality: job.quality,
-            modelId: job.modelId ?? job.modelName,
-            ...(job.modelProfileId ? { modelProfileId: job.modelProfileId } : {}),
-            ...(job.providerType ? { providerType: job.providerType } : {}),
-            ...(job.parameters ? { request: job.parameters } : {}),
-            ...(job.resultMetadata ? { result: job.resultMetadata } : {}),
-            actualImages: images.map((image) => ({ width: image.width, height: image.height, mimeType: image.mimeType })),
-          },
-        }),
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: title.trim(), includeCharacter: !withoutCharacter }),
       });
       const body = await response.json().catch(() => null);
       if (response.ok) {

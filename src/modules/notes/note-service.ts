@@ -21,7 +21,7 @@ export class NoteService {
     return this.repository.create(userId, input);
   }
 
-  async createIdempotent(userId: string, key: string, input: CreateNoteInput) {
+  async createIdempotent(userId: string, key: string, input: CreateNoteInput, options: { onConflict?: "reject" | "replay" } = {}) {
     const hash = requestHash(input);
     const now = new Date();
     await db.delete(idempotencyKeys).where(and(
@@ -30,7 +30,7 @@ export class NoteService {
       lte(idempotencyKeys.expiresAt, now),
     ));
 
-    const existing = await this.findIdempotentNote(userId, key, hash);
+    const existing = await this.findIdempotentNote(userId, key, hash, options.onConflict);
     if (existing) return { note: existing, replayed: true };
 
     const [claim] = await db.insert(idempotencyKeys).values({
@@ -40,9 +40,9 @@ export class NoteService {
       expiresAt: new Date(now.getTime() + NOTE_IDEMPOTENCY_TTL_MS),
     }).onConflictDoNothing().returning({ id: idempotencyKeys.id });
     if (!claim) {
-      const raced = await this.findIdempotentNote(userId, key, hash);
+      const raced = await this.findIdempotentNote(userId, key, hash, options.onConflict);
       if (raced) return { note: raced, replayed: true };
-      throw new ApiError(409, "NOTE_SAVE_IN_PROGRESS", "这条生成结果正在保存，请稍候");
+      throw new ApiError(409, "NOTE_SAVE_IN_PROGRESS", "这个保存请求正在处理，请稍候");
     }
 
     try {
@@ -60,14 +60,14 @@ export class NoteService {
     return this.repository.list(userId, options);
   }
 
-  private async findIdempotentNote(userId: string, key: string, hash: string) {
+  private async findIdempotentNote(userId: string, key: string, hash: string, onConflict: "reject" | "replay" = "reject") {
     const [existing] = await db.select().from(idempotencyKeys).where(and(
       eq(idempotencyKeys.userId, userId),
       eq(idempotencyKeys.key, key),
       gt(idempotencyKeys.expiresAt, new Date()),
     )).limit(1);
     if (!existing) return null;
-    if (existing.requestHash !== hash && !key.startsWith("imagehub-note:")) {
+    if (existing.requestHash !== hash && onConflict !== "replay") {
       throw new ApiError(409, "IDEMPOTENCY_CONFLICT", "这个保存请求标识已经用于其他内容");
     }
     if (!existing.response) return null;

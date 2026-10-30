@@ -4,10 +4,9 @@ import { db } from "@/db/client";
 import {
   aiGenerationAssets,
   aiGenerationJobs,
-  aiModelProfiles,
-  aiProviderConnections,
 } from "@/db/schema";
-import { decryptCredential } from "@/modules/ai/credential-crypto";
+import { decryptCredential } from "@/modules/credentials/credential-crypto";
+import { selectModelById } from "@/modules/ai/model-selection";
 import { AiProviderRegistry } from "@/modules/ai/provider-registry";
 import {
   AiProviderError,
@@ -228,28 +227,8 @@ export class GenerationWorkerProcessor {
     if (!modelProfileId) {
       throw new AiProviderError("AI_PROVIDER_UNAVAILABLE", "The configured image model is no longer available", false);
     }
-    const [selection] = await db.select({
-      connectionId: aiProviderConnections.id,
-      providerType: aiProviderConnections.providerType,
-      baseUrl: aiProviderConnections.baseUrl,
-      encryptedSecret: aiProviderConnections.encryptedSecret,
-      secretIv: aiProviderConnections.secretIv,
-      secretAuthTag: aiProviderConnections.secretAuthTag,
-      secretKeyId: aiProviderConnections.secretKeyId,
-      capabilities: aiModelProfiles.capabilities,
-    }).from(aiModelProfiles)
-      .innerJoin(aiProviderConnections, and(
-        eq(aiProviderConnections.id, aiModelProfiles.connectionId),
-        eq(aiProviderConnections.userId, userId),
-      ))
-      .where(and(
-        eq(aiModelProfiles.id, modelProfileId),
-        eq(aiModelProfiles.userId, userId),
-        eq(aiModelProfiles.enabled, true),
-        eq(aiProviderConnections.enabled, true),
-      ))
-      .limit(1);
-    if (!selection || !selection.capabilities.includes("image_generation")) {
+    const selection = await selectModelById(userId, modelProfileId);
+    if (!selection || !selection.modelEnabled || !selection.connectionEnabled || !selection.capabilities.includes("image_generation")) {
       throw new AiProviderError("AI_PROVIDER_UNAVAILABLE", `The configured image model for job ${jobId} is unavailable`, false);
     }
     return selection;
