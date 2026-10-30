@@ -4,6 +4,26 @@ All notable changes use the Keep a Changelog structure. Versions follow Semantic
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-10-30
+
+### Changed
+
+- Consolidated purpose-based model selection, provider errors, credential encryption and outbound request boundaries while preserving user ownership checks and worker-side credential decryption.
+- Moved generation-to-note payload construction to the server and unified note version snapshot/retention behavior.
+
+### Fixed
+
+- Preserved the existing generation-note idempotency namespace across old and new save endpoints, including repeated requests, concurrent saves and retries without a deleted AI Model association.
+- Made the generation-note route initialize its service lazily instead of requiring Redis during module import or before authentication.
+- Swept expired single-request rate-limit buckets before early returns while preserving active per-user quotas.
+- Recomputed restored note hashes consistently with restored positive and negative prompts and retained at most fifty snapshots.
+- Removed implicit legacy `response_format` requests for unrecognized image models, recognized the documented ChatGPT image snapshot alias, and rejected incompatible automatic model selections on the official OpenAI image endpoint before submission.
+
+### Verification
+
+- Added real PostgreSQL regressions for generation-note authorization, persisted result metadata, cross-version/cross-endpoint idempotency, stale AI Model recovery, version restoration, duplicate hashes and snapshot retention.
+- Updated browser coverage for the exact server-side note-save endpoint, loading feedback, duplicate-click prevention and explicit character-unlink retries. Provider compatibility tests use mocked responses without paid model requests or credential changes.
+
 ## [1.9.1] - 2026-10-29
 
 ### Fixed

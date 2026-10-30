@@ -1,10 +1,9 @@
-import { and, eq } from "drizzle-orm";
-
-import { db } from "@/db/client";
-import { aiModelPreferences, aiModelProfiles, aiProviderConnections } from "@/db/schema";
 import { ApiError } from "@/lib/api/errors";
 
-import { decryptCredential } from "./credential-crypto";
+import { decryptCredential } from "@/modules/credentials/credential-crypto";
+import { FixedWindowRateLimiter, type WindowRateLimiter } from "./fixed-window-rate-limiter";
+import { selectPreferredModel } from "./model-selection";
+import { providerApiError } from "./provider-api-error";
 import {
   ADAPTIVE_PROMPT_OPTIMIZER_SYSTEM_INSTRUCTION,
   buildAdaptivePromptUserMessage,
@@ -21,60 +20,16 @@ import { AiProviderRegistry } from "./provider-registry";
 import { AiProviderError, type AiProviderType, type PromptOptimizationServiceResult } from "./types";
 
 const OPTIMIZATION_PURPOSE = "prompt_optimization";
-const OPTIMIZATION_LIMIT = 8;
-const OPTIMIZATION_WINDOW_MS = 60_000;
 
 export const PROMPT_OPTIMIZER_SYSTEM_INSTRUCTION = ADAPTIVE_PROMPT_OPTIMIZER_SYSTEM_INSTRUCTION;
 export const IMAGE_PROMPT_OPTIMIZER_SYSTEM_INSTRUCTION = ADAPTIVE_PROMPT_OPTIMIZER_SYSTEM_INSTRUCTION;
 
-export interface PromptOptimizationRateLimiter {
-  consume(userId: string): boolean;
-}
-
-export class FixedWindowPromptOptimizationRateLimiter implements PromptOptimizationRateLimiter {
-  private readonly windows = new Map<string, { count: number; startedAt: number }>();
-
-  constructor(
-    private readonly limit = OPTIMIZATION_LIMIT,
-    private readonly windowMs = OPTIMIZATION_WINDOW_MS,
-    private readonly now = () => Date.now(),
-  ) {}
-
-  consume(userId: string) {
-    const currentTime = this.now();
-    const current = this.windows.get(userId);
-    if (!current || currentTime - current.startedAt >= this.windowMs) {
-      this.windows.set(userId, { count: 1, startedAt: currentTime });
-      return true;
-    }
-    if (current.count >= this.limit) return false;
-    current.count += 1;
-    if (this.windows.size > 10_000) {
-      for (const [key, value] of this.windows) {
-        if (currentTime - value.startedAt >= this.windowMs) this.windows.delete(key);
-      }
-    }
-    return true;
-  }
-}
-
-const defaultRateLimiter = new FixedWindowPromptOptimizationRateLimiter();
-
-function providerApiError(error: AiProviderError) {
-  const status = error.code === "AI_PROVIDER_RATE_LIMITED"
-    ? 429
-    : error.code === "AI_PROVIDER_TIMEOUT"
-      ? 504
-      : error.code === "AI_PROVIDER_AUTH_FAILED" || error.code === "AI_PROVIDER_QUOTA_EXCEEDED"
-        ? 422
-        : 502;
-  return new ApiError(status, error.code, error.message);
-}
+const defaultRateLimiter = new FixedWindowRateLimiter(8, 60_000);
 
 export class PromptOptimizer {
   constructor(
     private readonly providers = new AiProviderRegistry(),
-    private readonly rateLimiter: PromptOptimizationRateLimiter = defaultRateLimiter,
+    private readonly rateLimiter: WindowRateLimiter = defaultRateLimiter,
   ) {}
 
   async optimize(
@@ -85,35 +40,7 @@ export class PromptOptimizer {
     requestedModules: PromptModuleId[] = [],
     hints: PromptOptimizationHints = {},
   ): Promise<PromptOptimizationServiceResult> {
-    const [selection] = await db.select({
-      modelProfileId: aiModelProfiles.id,
-      modelId: aiModelProfiles.modelId,
-      displayName: aiModelProfiles.displayName,
-      capabilities: aiModelProfiles.capabilities,
-      defaultParameters: aiModelProfiles.defaultParameters,
-      modelEnabled: aiModelProfiles.enabled,
-      connectionId: aiProviderConnections.id,
-      providerType: aiProviderConnections.providerType,
-      baseUrl: aiProviderConnections.baseUrl,
-      encryptedSecret: aiProviderConnections.encryptedSecret,
-      secretIv: aiProviderConnections.secretIv,
-      secretAuthTag: aiProviderConnections.secretAuthTag,
-      secretKeyId: aiProviderConnections.secretKeyId,
-      connectionEnabled: aiProviderConnections.enabled,
-    }).from(aiModelPreferences)
-      .innerJoin(aiModelProfiles, and(
-        eq(aiModelProfiles.id, aiModelPreferences.modelProfileId),
-        eq(aiModelProfiles.userId, userId),
-      ))
-      .innerJoin(aiProviderConnections, and(
-        eq(aiProviderConnections.id, aiModelProfiles.connectionId),
-        eq(aiProviderConnections.userId, userId),
-      ))
-      .where(and(
-        eq(aiModelPreferences.userId, userId),
-        eq(aiModelPreferences.purpose, OPTIMIZATION_PURPOSE),
-      ))
-      .limit(1);
+    const selection = await selectPreferredModel(userId, [OPTIMIZATION_PURPOSE]);
 
     if (!selection) {
       throw new ApiError(422, "AI_OPTIMIZER_NOT_CONFIGURED", "请先在 AI 助手配置中指定提示词优化模型");

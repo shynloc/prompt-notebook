@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { parseOutboundBaseUrl } from "@/modules/ai/outbound-url-policy";
+import { parseOutboundBaseUrl } from "@/modules/outbound/outbound-url-policy";
 
 function endpointSchema() {
   return z.string().trim().min(1).max(2_048).superRefine((value, context) => {

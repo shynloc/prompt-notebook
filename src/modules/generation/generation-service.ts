@@ -7,15 +7,16 @@ import { db } from "@/db/client";
 import {
   aiGenerationAssets,
   aiGenerationJobs,
-  aiModelPreferences,
-  aiModelProfiles,
-  aiProviderConnections,
   characterProfileImages,
   characterProfiles,
   generationCharacterReferences,
 } from "@/db/schema";
 import { ApiError } from "@/lib/api/errors";
 import { validateImageGenerationSettings } from "@/modules/ai/image-capabilities";
+import { validateImageProviderContract } from "@/modules/ai/image-provider-contract";
+import { selectModelById, selectPreferredModel } from "@/modules/ai/model-selection";
+import { NoteService } from "@/modules/notes/note-service";
+import { createNoteSchema } from "@/modules/notes/note-schema";
 import { AiProviderError } from "@/modules/ai/types";
 import { inspectImage } from "@/modules/media/image-policy";
 import { localImageView } from "@/modules/media/local-media-store";
@@ -27,6 +28,7 @@ import {
   type StoredGenerationAsset,
 } from "./generation-media-store";
 import { BullMqGenerationQueue, type GenerationQueue } from "./generation-queue";
+import { generationNoteInput } from "./generation-note";
 import { createGenerationSchema, type CreateGenerationInput } from "./generation-schema";
 
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -115,6 +117,7 @@ export class GenerationService {
       ...(input.outputCompression !== undefined ? { output_compression: input.outputCompression } : {}),
     };
     try {
+      validateImageProviderContract({ baseUrl: selected.baseUrl, modelId: selected.modelId, parameters });
       const effective = validateImageGenerationSettings({ ...input, modelId: selected.modelId, parameters, referenceImageCount: referenceImages.length + characterReferences.length, ...(maskImage ? { maskImage: { data: maskImage, mimeType: "image/png", filename: "mask.png" } } : {}) });
       // Freeze the effective defaults alongside the selected model for reproducibility.
       parameters.output_format = effective.outputFormat;
@@ -665,34 +668,26 @@ export class GenerationService {
     return new Set(rows.map((row) => row.id));
   }
 
+  async saveAsNote(userId: string, jobId: string, input: { title?: string; includeCharacter?: boolean } = {}) {
+    const job = await this.get(userId, jobId);
+    if (job.status !== "succeeded") throw new ApiError(409, "GENERATION_NOT_READY", "只有完成的生成结果可以保存为笔记");
+    const note = createNoteSchema.parse(generationNoteInput({
+      ...job,
+      resultMetadata: job.resultMetadata,
+      characterProfile: job.characterProfile,
+    }, input));
+    // Keep the persisted key used by older ImageHub clients so both entry points
+    // replay the same note across upgrades, refreshes, and concurrent requests.
+    return new NoteService().createIdempotent(userId, `imagehub-note:${jobId}`, note, { onConflict: "replay" });
+  }
+
   private async resolveModel(userId: string, modelProfileId?: string) {
-    const conditions = [
-      eq(aiModelProfiles.userId, userId),
-      eq(aiModelProfiles.enabled, true),
-      eq(aiProviderConnections.userId, userId),
-      eq(aiProviderConnections.enabled, true),
-    ];
-    const query = db.select({
-      modelProfileId: aiModelProfiles.id,
-      modelId: aiModelProfiles.modelId,
-      displayName: aiModelProfiles.displayName,
-      capabilities: aiModelProfiles.capabilities,
-      defaultParameters: aiModelProfiles.defaultParameters,
-      providerType: aiProviderConnections.providerType,
-    }).from(aiModelProfiles)
-      .innerJoin(aiProviderConnections, and(
-        eq(aiProviderConnections.id, aiModelProfiles.connectionId),
-        eq(aiProviderConnections.userId, userId),
-      ));
-    const rows = modelProfileId
-      ? await query.where(and(...conditions, eq(aiModelProfiles.id, modelProfileId))).limit(1)
-      : await query.innerJoin(aiModelPreferences, and(
-        eq(aiModelPreferences.modelProfileId, aiModelProfiles.id),
-        eq(aiModelPreferences.userId, userId),
-        eq(aiModelPreferences.purpose, "image_generation"),
-      )).where(and(...conditions)).limit(1);
-    const selected = rows[0];
-    if (!selected) throw new ApiError(422, "GENERATION_MODEL_NOT_CONFIGURED", "请先在 AI 助手设置中添加模型，并将其指定为图片生成模型");
+    const selected = modelProfileId
+      ? await selectModelById(userId, modelProfileId)
+      : await selectPreferredModel(userId, ["image_generation"]);
+    if (!selected || !selected.modelEnabled || !selected.connectionEnabled) {
+      throw new ApiError(422, "GENERATION_MODEL_NOT_CONFIGURED", "请先在 AI 助手设置中添加模型，并将其指定为图片生成模型");
+    }
     if (!selected.capabilities.includes("image_generation")) {
       throw new ApiError(422, "AI_MODEL_CAPABILITY_MISMATCH", "当前模型不支持图片生成");
     }

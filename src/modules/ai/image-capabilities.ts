@@ -30,6 +30,7 @@ export interface ImageModelCapabilities {
   transparency: boolean;
   supportsMask: boolean;
   supportsCompression: boolean;
+  supportsResponseFormat: boolean;
   supportsReferences: boolean;
   maxReferenceImages: number;
   maxImageCount: number;
@@ -61,6 +62,7 @@ export function getImageModelCapabilities(modelId: string, parameters: Parameter
   else if (/^gpt-image-2\.5-(?:sunburst|flare)(?:-\d{4}-\d{2}-\d{2})?$/.test(id)) profileId = "gpt-image-2.5";
   else if (/^gpt-image-2(?:-\d{4}-\d{2}-\d{2})?$/.test(id)) profileId = "gpt-image-2";
   else if (/^gpt-image-1(?:\.5|-mini)?(?:-\d{4}-\d{2}-\d{2})?$/.test(id)) profileId = "gpt-image-1";
+  else if (id === "chatgpt-image-latest") profileId = "gpt-image-1";
   else if (id === "dall-e-3") profileId = "dall-e-3";
   else {
     profileId = "unknown";
@@ -75,7 +77,8 @@ export function getImageModelCapabilities(modelId: string, parameters: Parameter
   return {
     profileId,
     source,
-    label: source === "provider_alias" ? "GPT Image 2.5（供应商兼容别名）" : ({
+    label: source === "official" && id === "chatgpt-image-latest" ? "ChatGPT Image（历史快照）"
+      : source === "provider_alias" ? "GPT Image 2.5（供应商兼容别名）" : ({
       "gpt-image-2.5": "GPT Image 2.5",
       "gpt-image-2": "GPT Image 2",
       "gpt-image-1": "GPT Image 1 / 1.5",
@@ -92,6 +95,7 @@ export function getImageModelCapabilities(modelId: string, parameters: Parameter
     transparency,
     supportsMask: transparency,
     supportsCompression: advanced,
+    supportsResponseFormat: profileId === "dall-e-3",
     supportsReferences,
     maxReferenceImages: supportsReferences ? 4 : 0,
     maxImageCount: profileId === "dall-e-3" ? 1 : 4,
@@ -170,7 +174,9 @@ export function validateImageGenerationSettings(input: GenerationSettings) {
     providerOptions.output_format = outputFormat;
     providerOptions.background = background;
     if (outputCompression !== undefined) providerOptions.output_compression = outputCompression;
-  } else providerOptions.response_format = "b64_json";
+  }
+  // Absence of compression support does not imply a legacy DALL·E protocol.
+  if (capabilities.supportsResponseFormat) providerOptions.response_format = "b64_json";
   const quality = capabilities.profileId === "dall-e-3" ? input.quality === "high" ? "hd" : "standard" : input.quality;
   return { capabilities, size, quality, outputFormat, background, outputCompression, providerOptions };
 }

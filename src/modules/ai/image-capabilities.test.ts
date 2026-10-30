@@ -17,6 +17,22 @@ const settings = {
 };
 
 describe("image model capabilities", () => {
+  it("recognizes the ChatGPT image snapshot without granting 2.5 resolutions or quality", () => {
+    const capabilities = getImageModelCapabilities("chatgpt-image-latest");
+    expect(capabilities).toMatchObject({
+      profileId: "gpt-image-1", source: "official", known: true,
+      supportsCustomSize: false, supportsResponseFormat: false,
+    });
+    expect(capabilities.sizes).toEqual(["1024x1024", "1536x1024", "1024x1536"]);
+    expect(capabilities.qualities).not.toContain("max");
+    const result = validateImageGenerationSettings({
+      ...settings, modelId: "chatgpt-image-latest", width: 1024, height: 1536, quality: "high",
+      outputFormat: "png", background: "transparent",
+    });
+    expect(result.providerOptions).toEqual({ output_format: "png", background: "transparent" });
+    expect(() => validateImageGenerationSettings({ ...settings, modelId: "chatgpt-image-latest" })).toThrow(/不支持/);
+  });
+
   it.each([
     "gpt-image-2.5-sunburst", "gpt-image-2.5-flare",
     "gpt-image-2.5-sunburst-2026-09-08", "gpt-image-2.5-flare-2026-09-08",
@@ -103,9 +119,17 @@ describe("image model capabilities", () => {
     expect(() => validateImageGenerationSettings({ ...settings, outputCompression })).toThrow(/0–100/);
   });
 
-  it("omits unsupported advanced fields for a legacy-compatible provider", () => {
+  it("does not infer a legacy response format from an unknown model", () => {
     const result = validateImageGenerationSettings({ ...settings, modelId: "unknown", width: 1024, height: 1024, quality: "auto" });
+    expect(result.capabilities).toMatchObject({ supportsCompression: false, supportsResponseFormat: false });
+    expect(result.providerOptions).toEqual({});
+  });
+
+  it("keeps legacy response format support explicit and separate from compression", () => {
+    const result = validateImageGenerationSettings({ ...settings, modelId: "dall-e-3", width: 1024, height: 1024, quality: "high" });
+    expect(result.capabilities).toMatchObject({ supportsCompression: false, supportsResponseFormat: true });
     expect(result.providerOptions).toEqual({ response_format: "b64_json" });
+    expect(result.quality).toBe("hd");
   });
 
   it("checks the combined positive and negative prompt, reference and image-count budgets", () => {
